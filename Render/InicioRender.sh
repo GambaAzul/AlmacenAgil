@@ -25,17 +25,58 @@ echo "Iniciando servidor Node en ${PuertoServidor}"
 node /aplicacion/Servidor/src/Indice.js &
 ProcesoServidor=$!
 
-echo "Iniciando Nginx en ${PuertoPublico}"
-nginx -g 'daemon off;' &
-ProcesoNginx=$!
-
 cerrar() {
   echo "Cerrando servicios"
-  kill -TERM "$ProcesoServidor" "$ProcesoNginx" 2>/dev/null || true
-  wait "$ProcesoServidor" "$ProcesoNginx" 2>/dev/null || true
+
+  if [ -n "${ProcesoNginx:-}" ]; then
+    kill -TERM "$ProcesoNginx" 2>/dev/null || true
+  fi
+
+  kill -TERM "$ProcesoServidor" 2>/dev/null || true
+
+  if [ -n "${ProcesoNginx:-}" ]; then
+    wait "$ProcesoNginx" 2>/dev/null || true
+  fi
+
+  wait "$ProcesoServidor" 2>/dev/null || true
 }
 
 trap cerrar TERM INT
+
+echo "Esperando inicialización del servidor"
+
+ServidorListo=false
+Intento=1
+
+while [ "$Intento" -le 90 ]; do
+  if ! kill -0 "$ProcesoServidor" 2>/dev/null; then
+    echo "El servidor Node se detuvo durante la inicialización"
+    wait "$ProcesoServidor" || true
+    exit 1
+  fi
+
+  if wget -q -T 2 -O /dev/null \
+    "http://127.0.0.1:${PuertoServidor}/api/salud"; then
+    ServidorListo=true
+    break
+  fi
+
+  echo "Servidor todavía no disponible: intento ${Intento} de 90"
+  Intento=$((Intento + 1))
+  sleep 2
+done
+
+if [ "$ServidorListo" != "true" ]; then
+  echo "El servidor no estuvo disponible después de 180 segundos"
+  cerrar
+  exit 1
+fi
+
+echo "Servidor Node disponible"
+echo "Iniciando Nginx en ${PuertoPublico}"
+
+nginx -g 'daemon off;' &
+ProcesoNginx=$!
 
 while true; do
   if ! kill -0 "$ProcesoServidor" 2>/dev/null; then
