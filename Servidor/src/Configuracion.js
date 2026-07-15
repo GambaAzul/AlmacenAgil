@@ -1,4 +1,4 @@
-const VariablesRequeridas=['URLBASE','SECRETOACCESO','CLAVEADMINISTRADOR','CLAVEADMINRESPALDO','CLAVEVENTAS','CLAVEALMACEN']
+const VariablesRequeridas=['URLBASE','SECRETOACCESO','CLAVEADMINISTRADOR','CLAVEADMINRESPALDO','CLAVEVENTAS','CLAVEALMACEN','TOKENSUNAT']
 
 export function ValidarConfiguracion() {
   const faltantes=VariablesRequeridas.filter(nombre=>!process.env[nombre])

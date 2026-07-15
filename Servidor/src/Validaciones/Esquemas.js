@@ -11,7 +11,6 @@ const Stock = z.coerce.number().finite().int().min(0).max(LimiteStock)
 const CantidadStock = z.coerce.number().finite().int().min(1).max(LimiteStock)
 const Dinero = z.coerce.number().finite().min(0.01).max(1000000)
 const Porcentaje = z.coerce.number().finite().min(0).max(100)
-const DocumentoOpcional = esquema => z.union([esquema,z.literal('')]).optional().transform(valor=>valor||undefined)
 const Clave = z.string().min(12).max(128).regex(/[A-Z]/).regex(/[a-z]/).regex(/\d/).regex(/[^A-Za-z0-9]/)
 const Archivo = z.object({
   nombre: Texto(1,180),
@@ -83,8 +82,7 @@ export const EsquemaUsuario = z.object({
 
 export const EsquemaCotizacion = z.object({
   cliente:Texto(3,160),
-  dni:DocumentoOpcional(Dni),
-  ruc:DocumentoOpcional(Ruc),
+  ruc:Ruc,
   telefono:Telefono,
   correo:Correo,
   productos:z.array(z.object({
@@ -92,7 +90,6 @@ export const EsquemaCotizacion = z.object({
     cantidad:CantidadStock
   }).strict()).min(1).max(100)
 }).strict()
-  .refine(valor=>Boolean(valor.dni||valor.ruc),{message:'Ingrese DNI o RUC'})
   .refine(valor=>new Set(valor.productos.map(item=>item.productoid)).size===valor.productos.length,{message:'No repita productos'})
 
 export const EsquemaContactoCotizacion = z.object({nota:Texto(3,500)}).strict()

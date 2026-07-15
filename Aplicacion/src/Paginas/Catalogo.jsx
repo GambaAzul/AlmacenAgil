@@ -155,27 +155,53 @@ function Filtro({nombre,valor,opciones,cambiar}) {
 }
 
 function Cotizador({carrito,setCarrito,cerrar,finalizado}) {
-  const [datos,setDatos] = useState({cliente:'',documento:'',telefono:'',correo:''})
+  const [datos,setDatos] = useState({ruc:'',telefono:'',correo:''})
+  const [empresa,setEmpresa] = useState('')
+  const [rucValidado,setRucValidado] = useState('')
+  const [verificando,setVerificando] = useState(false)
   const [error,setError] = useState('')
   const [enviando,setEnviando] = useState(false)
   const total=carrito.reduce((suma,item)=>suma+CalcularLinea(item.precio,item.cantidad,item.descuentofijo).total,0)
+
+  const cambiarRuc = valor => {
+    setDatos({...datos,ruc:valor})
+    setEmpresa('')
+    setRucValidado('')
+  }
+
+  const verificarRuc = async () => {
+    setError('')
+    if (!/^\d{11}$/.test(datos.ruc)) return setError('Ingrese un RUC de 11 dígitos')
+    try {
+      setVerificando(true)
+      const respuesta = await Solicitar(`/ruc/${datos.ruc}`)
+      setEmpresa(respuesta.razonsocial)
+      setRucValidado(datos.ruc)
+    } catch (errorSolicitud) {
+      setEmpresa('')
+      setRucValidado('')
+      setError(errorSolicitud.message)
+    } finally {
+      setVerificando(false)
+    }
+  }
 
   const enviar = async evento => {
     evento.preventDefault()
     setError('')
     if (!carrito.length) return setError('Agregue al menos un producto')
     if (carrito.some(item=>item.cantidad>item.maximo)) return setError('Una cantidad supera el máximo permitido')
-    if (!/^\d{8}$|^\d{11}$/.test(datos.documento)) return setError('Ingrese DNI de 8 o RUC de 11 dígitos')
+    if (rucValidado!==datos.ruc||!empresa) return setError('Verifique el RUC antes de continuar')
     if (!/^\d{7,15}$/.test(datos.telefono)) return setError('Teléfono inválido')
     if (!CorreoValido(datos.correo)) return setError('Correo inválido')
     try {
       setEnviando(true)
       const cuerpo = {
-        cliente:datos.cliente,
+        cliente:empresa,
+        ruc:datos.ruc,
         telefono:datos.telefono,
         correo:datos.correo,
-        productos:carrito.map(({productoid,cantidad})=>({productoid,cantidad})),
-        ...(datos.documento.length===8?{dni:datos.documento}:{ruc:datos.documento})
+        productos:carrito.map(({productoid,cantidad})=>({productoid,cantidad}))
       }
       const respuesta = await Solicitar('/cotizaciones',{method:'POST',body:JSON.stringify(cuerpo)})
       finalizado(`Cotización N.° ${respuesta.id} registrada`)
@@ -208,12 +234,15 @@ function Cotizador({carrito,setCarrito,cerrar,finalizado}) {
         </div>
       })}
       {!!carrito.length&&<div className="totalcarrito"><span>Total estimado</span><b>S/ {total.toFixed(2)}</b></div>}
-      <Campo etiqueta="Nombre o empresa" value={datos.cliente} onChange={evento=>setDatos({...datos,cliente:evento.target.value.slice(0,160)})} minLength="3" maxLength="160" required/>
-      <Campo etiqueta="DNI o RUC" inputMode="numeric" pattern="[0-9]{8}|[0-9]{11}" value={datos.documento} onChange={evento=>setDatos({...datos,documento:evento.target.value.replace(/\D/g,'').slice(0,11)})} required/>
+      <div className="filaruc">
+        <Campo etiqueta="RUC" inputMode="numeric" pattern="[0-9]{11}" value={datos.ruc} onChange={evento=>cambiarRuc(evento.target.value.replace(/\D/g,'').slice(0,11))} minLength="11" maxLength="11" required/>
+        <button type="button" className="secundario" onClick={verificarRuc} disabled={datos.ruc.length!==11||verificando}>{verificando?'Verificando...':'Verificar'}</button>
+      </div>
+      <Campo etiqueta="Empresa" value={empresa} readOnly placeholder="Se completa al verificar el RUC" required/>
       <Campo etiqueta="Teléfono" inputMode="numeric" pattern="[0-9]{7,15}" value={datos.telefono} onChange={evento=>setDatos({...datos,telefono:evento.target.value.replace(/\D/g,'').slice(0,15)})} required/>
       <Campo etiqueta="Correo" type="email" value={datos.correo} onChange={evento=>setDatos({...datos,correo:evento.target.value.slice(0,160)})} maxLength="160" required/>
       {error&&<div className="mensajeerror">{error}</div>}
-      <button className="principal" disabled={!carrito.length||enviando}>{enviando?'Enviando...':'Enviar cotización'}</button>
+      <button className="principal" disabled={!carrito.length||enviando||rucValidado!==datos.ruc||!empresa}>{enviando?'Enviando...':'Enviar cotización'}</button>
     </form>
   </div>
 }

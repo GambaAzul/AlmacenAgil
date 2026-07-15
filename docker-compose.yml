@@ -44,6 +44,7 @@ services:
       CLAVEADMINRESPALDO: ${CLAVEADMINRESPALDO:?Ejecuta PrepararEntorno}
       CLAVEVENTAS: ${CLAVEVENTAS:?Ejecuta PrepararEntorno}
       CLAVEALMACEN: ${CLAVEALMACEN:?Ejecuta PrepararEntorno}
+      TOKENSUNAT: ${TOKENSUNAT:?Agrega tu token de la API de RUC en .env}
       RUTAESQUEMA: /aplicacion/BaseDatos/Inicial.sql
       SERVIDORCORREO: ${SERVIDORCORREO:-}
       PUERTOCORREO: ${PUERTOCORREO:-587}

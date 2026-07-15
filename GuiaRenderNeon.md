@@ -40,6 +40,7 @@ CLAVEADMINISTRADOR
 CLAVEADMINRESPALDO
 CLAVEVENTAS
 CLAVEALMACEN
+TOKENSUNAT (token de la API de consulta de RUC)
 
 
 La cuenta de recuperación es:
@@ -70,6 +71,7 @@ git status
    - “CLAVEADMINRESPALDO”.
    - “CLAVEVENTAS”.
    - “CLAVEALMACEN”.
+   - “TOKENSUNAT”.
 5. Confirma el plan gratuito y crea el Blueprint.
 
 “SECRETOACCESO” se genera automáticamente.

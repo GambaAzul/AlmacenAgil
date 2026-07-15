@@ -39,6 +39,9 @@ services:
       - key: CLAVEALMACEN
         sync: false
 
+      - key: TOKENSUNAT
+        sync: false
+
       - key: SERVIDORCORREO
         value: ""
 

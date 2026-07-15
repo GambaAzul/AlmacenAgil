@@ -10,6 +10,7 @@ import {
   ExigirProteccion,
   LimiteAcceso,
   LimiteActivacion,
+  LimiteConsultaRuc,
   LimiteCotizacion,
   Validar,
   ValidarIdentificador
@@ -41,6 +42,7 @@ import { RegistrarAuditoria } from '../Servicios/Auditoria.js'
 import { CalcularDescuentoTotal,CalcularSubtotal } from '../Servicios/Descuentos.js'
 import { EnviarCorreo } from '../Servicios/Correo.js'
 import { FacturaPublica,CrearFactura,GenerarPdfFactura,ObtenerFactura } from '../Servicios/Facturas.js'
+import { ConsultarRuc,RucEsValido } from '../Servicios/Sunat.js'
 import {
   CompletarReservasPendientes,
   CrearReabastecimiento,
@@ -177,6 +179,19 @@ Api.get('/categorias',async (_,res)=>{
   res.json(datos.rows)
 })
 
+Api.get('/ruc/:ruc',LimiteConsultaRuc,async (req,res)=>{
+  const ruc=String(req.params.ruc||'')
+  if (!/^\d{11}$/.test(ruc)) return res.status(400).json({mensaje:'RUC inválido'})
+  try {
+    const resultado=await ConsultarRuc(ruc)
+    if (!resultado) return res.status(404).json({mensaje:'RUC no encontrado en SUNAT'})
+    if (!RucEsValido(resultado)) return res.status(409).json({mensaje:'El RUC no está activo y habido en SUNAT'})
+    res.json({ruc:resultado.numero_documento,razonsocial:resultado.razon_social,estado:resultado.estado,condicion:resultado.condicion})
+  } catch {
+    res.status(502).json({mensaje:'No se pudo validar el RUC, intente nuevamente'})
+  }
+})
+
 Api.post('/cotizaciones',LimiteCotizacion,Validar(EsquemaCotizacion),async (req,res)=>{
   const cliente=await BaseDatos.connect()
   try {
@@ -206,7 +221,7 @@ Api.post('/cotizaciones',LimiteCotizacion,Validar(EsquemaCotizacion),async (req,
     const nueva=(await cliente.query(
       `INSERT INTO cotizaciones(cliente,dni,ruc,telefono,correo,total)
        VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [req.body.cliente,req.body.dni||null,req.body.ruc||null,req.body.telefono,req.body.correo,total.toFixed(2)]
+      [req.body.cliente,null,req.body.ruc,req.body.telefono,req.body.correo,total.toFixed(2)]
     )).rows[0]
     for (const item of calculos) {
       await cliente.query(
