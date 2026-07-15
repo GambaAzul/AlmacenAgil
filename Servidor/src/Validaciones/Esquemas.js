@@ -1,13 +1,15 @@
 import { z } from 'zod'
 
+const LimiteStock=1000
 const Texto = (minimo,maximo) => z.string().trim().min(minimo).max(maximo)
 const Correo = z.string().trim().email().max(160).transform(valor=>valor.toLowerCase())
 const Dni = z.string().regex(/^\d{8}$/)
 const Ruc = z.string().regex(/^\d{11}$/)
 const Telefono = z.string().regex(/^\+?\d{7,15}$/)
 const Entero = z.coerce.number().finite().int().min(0).max(1000000)
-const Positivo = z.coerce.number().finite().int().min(1).max(1000000)
-const Dinero = z.coerce.number().finite().min(0).max(100000000)
+const Stock = z.coerce.number().finite().int().min(0).max(LimiteStock)
+const CantidadStock = z.coerce.number().finite().int().min(1).max(LimiteStock)
+const Dinero = z.coerce.number().finite().min(0.01).max(1000000)
 const Porcentaje = z.coerce.number().finite().min(0).max(100)
 const DocumentoOpcional = esquema => z.union([esquema,z.literal('')]).optional().transform(valor=>valor||undefined)
 const Clave = z.string().min(12).max(128).regex(/[A-Z]/).regex(/[a-z]/).regex(/\d/).regex(/[^A-Za-z0-9]/)
@@ -18,6 +20,8 @@ const Archivo = z.object({
 }).strict()
 
 export const EsquemaAcceso = z.object({correo:Correo,clave:z.string().min(8).max(128)}).strict()
+
+export const EsquemaConfirmacion = z.object({confirmacion:z.literal(true)}).strict()
 
 export const EsquemaActivacion = z.object({
   correo:Correo,
@@ -40,21 +44,21 @@ export const EsquemaProducto = z.object({
   material:Texto(1,80),
   grosor:Texto(1,40),
   dimensiones:Texto(1,80),
-  maximopedido:z.coerce.number().int().min(1).max(10000),
+  maximopedido:CantidadStock,
   precioventa:Dinero,
   preciocompra:Dinero,
   descuentoventa:Porcentaje,
   descuentocompra:Porcentaje,
-  stockactual:Entero,
-  stockminimo:Entero,
-  stockmensual:Entero,
+  stockactual:Stock,
+  stockminimo:Stock,
+  stockmensual:Stock,
   imagen:z.string().max(700000).refine(valor=>valor===''||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(valor),'Imagen inválida')
 }).strict()
 
 export const EsquemaProveedor = z.object({
   razonsocial:Texto(3,160),
   ruc:Ruc,
-  contacto:Texto(3,120),
+  contacto:Texto(3,120).regex(/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' -]+$/),
   telefono:Telefono,
   correo:Correo,
   ubicacion:Texto(3,220)
@@ -65,13 +69,13 @@ export const EsquemaProveedorProducto = z.object({
   preciohabitual:Dinero,
   descuentolanzamiento:Porcentaje,
   diasentrega:z.coerce.number().finite().int().min(1).max(365),
-  pedidosanteriores:Entero,
+  pedidosanteriores:z.coerce.number().finite().int().min(0).max(100000),
   puntaje:z.coerce.number().finite().min(1).max(5)
 }).strict()
 
 export const EsquemaUsuario = z.object({
-  nombres:Texto(2,80),
-  apellidos:Texto(2,80),
+  nombres:Texto(2,80).regex(/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' -]+$/),
+  apellidos:Texto(2,80).regex(/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' -]+$/),
   dni:Dni,
   correo:Correo,
   rol:z.enum(['Administrador','AsesorVentas','JefeAlmacen'])
@@ -85,7 +89,7 @@ export const EsquemaCotizacion = z.object({
   correo:Correo,
   productos:z.array(z.object({
     productoid:z.coerce.number().int().positive().max(1000000),
-    cantidad:z.coerce.number().int().min(1).max(10000)
+    cantidad:CantidadStock
   }).strict()).min(1).max(100)
 }).strict()
   .refine(valor=>Boolean(valor.dni||valor.ruc),{message:'Ingrese DNI o RUC'})
@@ -99,13 +103,13 @@ export const EsquemaObservacion = z.object({observacion:Texto(0,500)}).strict()
 export const EsquemaMovimiento = z.object({
   productoid:z.coerce.number().int().positive().max(1000000),
   tipo:z.enum(['Entrada','Salida','Merma','Ajuste']),
-  cantidad:Positivo,
+  cantidad:CantidadStock,
   motivo:Texto(3,250)
 }).strict()
 
 export const EsquemaReabastecimientoManual = z.object({
   productoid:z.coerce.number().int().positive().max(1000000),
-  cantidadrequerida:Positivo,
+  cantidadrequerida:CantidadStock,
   observacion:Texto(3,500)
 }).strict()
 
@@ -118,16 +122,26 @@ export const EsquemaPagoProveedor = z.object({archivo:Archivo,observacion:Texto(
 
 export const EsquemaRecepcion = z.object({
   reabastecimientoid:z.coerce.number().int().positive().max(1000000),
-  recibida:Entero,
-  faltantes:Entero,
-  defectuosos:Entero,
+  recibida:Stock,
+  faltantes:Stock,
+  defectuosos:Stock,
   observacion:Texto(3,500)
-}).strict()
+}).strict().refine(valor=>valor.recibida+valor.faltantes+valor.defectuosos<=LimiteStock,{message:'La recepción no puede superar 1000 unidades'})
 
 export const EsquemaAuditoria = z.object({
   observacion:Texto(3,500),
   productos:z.array(z.object({
     productoid:z.coerce.number().int().positive().max(1000000),
-    stockcontado:Entero
+    stockcontado:Stock
   }).strict()).min(1).max(500)
 }).strict().refine(valor=>new Set(valor.productos.map(item=>item.productoid)).size===valor.productos.length,{message:'No repita productos'})
+
+export const EsquemaEmpresa = z.object({
+  nombrecomercial:Texto(2,120),
+  razonsocial:Texto(2,160),
+  ruc:Ruc,
+  direccion:Texto(3,220),
+  telefono:Telefono,
+  correo:Correo,
+  serie:Texto(4,4).transform(valor=>valor.toUpperCase()).pipe(z.string().regex(/^[A-Z0-9]{4}$/))
+}).strict()

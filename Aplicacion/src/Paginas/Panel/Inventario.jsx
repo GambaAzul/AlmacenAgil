@@ -3,6 +3,7 @@ import { Campo } from '../../Componentes/Campo'
 import { Mensaje,Modal,Estado,Titulo,FormatoFecha } from '../../Componentes/Comun'
 import { UsarSesion } from '../../Contextos/Sesion'
 import { Solicitar } from '../../Servicios/Api'
+import { DecimalLimitado,EnteroLimitado,LimiteStock } from '../../Validaciones/Reglas'
 
 const Materiales={
   Papel:['Bond','Folcote','Manteca','Avena','Kraft','Dúplex'],
@@ -110,11 +111,12 @@ export function Inventario() {
       <label className="campo"><span>Material</span><input list="materialesproducto" value={formulario.material} onChange={e=>setFormulario({...formulario,material:e.target.value.slice(0,80)})} maxLength="80" required/><datalist id="materialesproducto">{Materiales[formulario.tipoproducto]?.map(valor=><option key={valor} value={valor}/>)}</datalist></label>
       <label className="campo"><span>Grosor</span><input list="grosoresproducto" value={formulario.grosor} onChange={e=>setFormulario({...formulario,grosor:e.target.value.slice(0,40)})} maxLength="40" required/><datalist id="grosoresproducto">{Grosores.map(valor=><option key={valor} value={valor}/>)}</datalist></label>
       <label className="campo"><span>Dimensiones</span><input list="dimensionesproducto" value={formulario.dimensiones} onChange={e=>setFormulario({...formulario,dimensiones:e.target.value.slice(0,80)})} maxLength="80" required/><datalist id="dimensionesproducto">{Dimensiones.map(valor=><option key={valor} value={valor}/>)}</datalist></label>
-      <Campo etiqueta="Máximo por pedido" type="number" min="1" max="10000" value={formulario.maximopedido} onChange={e=>setFormulario({...formulario,maximopedido:e.target.value.replace(/\D/g,'').slice(0,5)})} required/>
+      <Campo etiqueta="Máximo por pedido" type="number" min="1" max={LimiteStock} value={formulario.maximopedido} onChange={e=>setFormulario({...formulario,maximopedido:EnteroLimitado(e.target.value,LimiteStock,1)})} required/>
       <Campo etiqueta="Descripción" className="ancho" value={formulario.descripcion} onChange={e=>setFormulario({...formulario,descripcion:e.target.value.slice(0,500)})} maxLength="500"/>
-      {['precioventa','preciocompra'].map(campo=><Campo key={campo} etiqueta={campo==='precioventa'?'Precio venta':'Precio compra'} inputMode="decimal" value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:e.target.value.replace(/[^0-9.]/g,'').slice(0,12)})} required/>)}
-      {['descuentoventa','descuentocompra'].map(campo=><Campo key={campo} etiqueta={campo==='descuentoventa'?'Descuento fijo al cliente %':'Descuento de compra fijo %'} type="number" min="0" max="100" step="0.01" value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:e.target.value})} required/>)}
-      {['stockactual','stockminimo','stockmensual'].map(campo=><Campo key={campo} etiqueta={campo==='stockactual'?'Stock actual':campo==='stockminimo'?'Stock mínimo':'Stock mensual'} type="number" min="0" max="1000000" value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:e.target.value.replace(/\D/g,'')})} required/>)}
+      {['precioventa','preciocompra'].map(campo=><Campo key={campo} etiqueta={campo==='precioventa'?'Precio venta':'Precio compra'} type="number" min="0.01" max="1000000" step="0.01" inputMode="decimal" value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:DecimalLimitado(e.target.value,1000000,2)})} required/>)}
+      {['descuentoventa','descuentocompra'].map(campo=><Campo key={campo} etiqueta={campo==='descuentoventa'?'Descuento fijo al cliente %':'Descuento de compra fijo %'} type="number" min="0" max="100" step="0.01" value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:DecimalLimitado(e.target.value,100,2)})} required/>)}
+      {['stockactual','stockminimo','stockmensual'].map(campo=><Campo key={campo} etiqueta={campo==='stockactual'?'Stock actual':campo==='stockminimo'?'Stock mínimo':'Stock mensual'} type="number" min="0" max={LimiteStock} value={formulario[campo]} onChange={e=>setFormulario({...formulario,[campo]:EnteroLimitado(e.target.value,LimiteStock)})} required/>)}
+      <div className="panelinformativo ancho"><b>Límite de inventario</b><span>Todo valor de stock y movimiento está limitado a 1000 unidades.</span></div>
       <div className="panelinformativo ancho"><b>Descuento por volumen automático</b><span>5 a 10 unidades: 10 % · 11 a 20: 15 % · 21 o más: 20 %</span></div>
       <label className="campo ancho"><span>Imagen del producto</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>leerImagen(e.target.files[0])}/><small>Máximo 500 KB</small></label>
       {formulario.imagen&&<div className="previsualizacion ancho"><img src={formulario.imagen} alt="Previsualización"/><button type="button" className="secundario" onClick={()=>setFormulario({...formulario,imagen:''})}>Quitar imagen</button></div>}
@@ -123,7 +125,7 @@ export function Inventario() {
     {modalMovimiento&&<Modal titulo="Registrar movimiento" cerrar={()=>setModalMovimiento(false)}><form onSubmit={guardarMovimiento}>
       <label className="campo"><span>Producto</span><select value={movimiento.productoid} onChange={e=>setMovimiento({...movimiento,productoid:e.target.value})}>{productos.filter(p=>p.activo).map(p=><option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}</select></label>
       <label className="campo"><span>Tipo</span><select value={movimiento.tipo} onChange={e=>setMovimiento({...movimiento,tipo:e.target.value})}>{['Entrada','Salida','Merma','Ajuste'].map(t=><option key={t}>{t}</option>)}</select></label>
-      <Campo etiqueta="Cantidad" type="number" min="1" max="1000000" value={movimiento.cantidad} onChange={e=>setMovimiento({...movimiento,cantidad:e.target.value.replace(/\D/g,'')})} required/>
+      <Campo etiqueta="Cantidad" type="number" min="1" max={LimiteStock} value={movimiento.cantidad} onChange={e=>setMovimiento({...movimiento,cantidad:EnteroLimitado(e.target.value,LimiteStock,1)})} required/>
       <Campo etiqueta="Motivo" value={movimiento.motivo} onChange={e=>setMovimiento({...movimiento,motivo:e.target.value.slice(0,250)})} minLength="3" maxLength="250" required/>
       <button className="principal">Registrar</button>
     </form></Modal>}

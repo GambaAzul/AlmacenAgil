@@ -2,6 +2,7 @@ import { useEffect,useState } from 'react'
 import { Campo } from '../../Componentes/Campo'
 import { FormatoFecha,Mensaje,Modal,Titulo } from '../../Componentes/Comun'
 import { Solicitar } from '../../Servicios/Api'
+import { EnteroLimitado,LimiteStock } from '../../Validaciones/Reglas'
 
 export function Recepciones() {
   const [recepciones,setRecepciones]=useState([])
@@ -26,6 +27,9 @@ export function Recepciones() {
     setFormulario({...formulario,reabastecimientoid:String(id),recibida:String(compra?.cantidadrequerida||0),faltantes:'0',defectuosos:'0'})
   }
 
+  const compraSeleccionada=compras.find(item=>String(item.id)===String(formulario.reabastecimientoid))
+  const maximoRecepcion=Math.min(LimiteStock,Number(compraSeleccionada?.cantidadrequerida||LimiteStock))
+
   const guardar=async evento=>{
     evento.preventDefault();setError('')
     try {
@@ -44,9 +48,9 @@ export function Recepciones() {
     </table></div>
     {modal&&<Modal titulo="Registrar recepción" cerrar={()=>setModal(false)}><form onSubmit={guardar}>
       <label className="campo"><span>Compra en tránsito</span><select value={formulario.reabastecimientoid} onChange={e=>seleccionar(e.target.value)}>{compras.map(c=><option key={c.id} value={c.id}>{c.ordencompra} · {c.producto} · {c.cantidadrequerida} unidades</option>)}</select></label>
-      <Campo etiqueta="Unidades en buen estado" type="number" min="0" value={formulario.recibida} onChange={e=>setFormulario({...formulario,recibida:e.target.value.replace(/\D/g,'')})} required/>
-      <Campo etiqueta="Unidades faltantes" type="number" min="0" value={formulario.faltantes} onChange={e=>setFormulario({...formulario,faltantes:e.target.value.replace(/\D/g,'')})} required/>
-      <Campo etiqueta="Unidades defectuosas" type="number" min="0" value={formulario.defectuosos} onChange={e=>setFormulario({...formulario,defectuosos:e.target.value.replace(/\D/g,'')})} required/>
+      <Campo etiqueta="Unidades en buen estado" type="number" min="0" max={maximoRecepcion} value={formulario.recibida} onChange={e=>setFormulario({...formulario,recibida:EnteroLimitado(e.target.value,maximoRecepcion)})} required/>
+      <Campo etiqueta="Unidades faltantes" type="number" min="0" max={maximoRecepcion} value={formulario.faltantes} onChange={e=>setFormulario({...formulario,faltantes:EnteroLimitado(e.target.value,maximoRecepcion)})} required/>
+      <Campo etiqueta="Unidades defectuosas" type="number" min="0" max={maximoRecepcion} value={formulario.defectuosos} onChange={e=>setFormulario({...formulario,defectuosos:EnteroLimitado(e.target.value,maximoRecepcion)})} required/>
       <Campo etiqueta="Observación" value={formulario.observacion} onChange={e=>setFormulario({...formulario,observacion:e.target.value.slice(0,500)})} minLength="3" required/>
       <button className="principal">Registrar recepción</button>
     </form></Modal>}

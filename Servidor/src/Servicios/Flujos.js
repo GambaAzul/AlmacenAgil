@@ -17,6 +17,7 @@ export async function RegistrarHistorialReabastecimiento(cliente,reabastecimient
 }
 
 export async function CrearReabastecimiento(cliente,datos) {
+  const cantidad=Math.min(1000,Math.max(1,Number(datos.cantidadrequerida)||1))
   const activo = (await cliente.query(
     `SELECT * FROM reabastecimientos
      WHERE productoid=$1
@@ -34,14 +35,14 @@ export async function CrearReabastecimiento(cliente,datos) {
       `UPDATE reabastecimientos
        SET cantidadrequerida=GREATEST(cantidadrequerida,$1),observacion=$2,actualizadoen=NOW()
        WHERE id=$3 RETURNING *`,
-      [datos.cantidadrequerida,observacion,activo.id]
+      [cantidad,observacion,activo.id]
     )).rows[0]
     return actualizado
   }
   const nuevo = (await cliente.query(
     `INSERT INTO reabastecimientos(productoid,cotizacionid,motivo,cantidadrequerida,observacion)
      VALUES($1,$2,$3,$4,$5) RETURNING *`,
-    [datos.productoid,datos.cotizacionid||null,datos.motivo,datos.cantidadrequerida,datos.observacion||'']
+    [datos.productoid,datos.cotizacionid||null,datos.motivo,cantidad,datos.observacion||'']
   )).rows[0]
   await RegistrarHistorialReabastecimiento(cliente,nuevo.id,null,'Pendiente',datos.observacion||'',datos.usuarioid)
   return nuevo

@@ -19,6 +19,8 @@ import {
   EsquemaActivacion,
   EsquemaAuditoria,
   EsquemaCambioClave,
+  EsquemaConfirmacion,
+  EsquemaEmpresa,
   EsquemaComprobanteCotizacion,
   EsquemaContactoCotizacion,
   EsquemaCotizacion,
@@ -38,6 +40,7 @@ import { PrepararArchivo,EnviarArchivo } from '../Servicios/Archivos.js'
 import { RegistrarAuditoria } from '../Servicios/Auditoria.js'
 import { CalcularDescuentoTotal,CalcularSubtotal } from '../Servicios/Descuentos.js'
 import { EnviarCorreo } from '../Servicios/Correo.js'
+import { BoletaPublica,CrearBoleta,GenerarPdfBoleta,ObtenerBoleta } from '../Servicios/Boletas.js'
 import {
   CompletarReservasPendientes,
   CrearReabastecimiento,
@@ -123,9 +126,20 @@ function CredencialesEntregables(correo,credenciales,estadoCorreo) {
   }
 }
 
+function CredencialTemporal(correo,credenciales) {
+  return {
+    correo,
+    clavetemporal:credenciales.temporal,
+    venceen:credenciales.venceen,
+    ingresotemporal:true
+  }
+}
+
 async function CotizacionCompleta(id,cliente=BaseDatos) {
   return (await cliente.query(
     `SELECT c.*,
+      (SELECT b.codigo FROM boletas b WHERE b.cotizacionid=c.id) boletacodigo,
+      (SELECT b.serie||'-'||LPAD(b.numero::text,8,'0') FROM boletas b WHERE b.cotizacionid=c.id) boletanumero,
       COALESCE(json_agg(json_build_object(
         'id',d.id,'productoid',d.productoid,'producto',p.nombre,'codigo',p.codigo,
         'cantidad',d.cantidad,'cantidadreservada',d.cantidadreservada,
@@ -214,6 +228,29 @@ Api.post('/cotizaciones',LimiteCotizacion,Validar(EsquemaCotizacion),async (req,
   }
 })
 
+Api.get('/boletas/verificar/:codigo',async (req,res)=>{
+  const codigo=String(req.params.codigo||'').toUpperCase()
+  if (!/^[A-Z0-9]{20,40}$/.test(codigo)) return res.status(400).json({mensaje:'Código de boleta inválido'})
+  const boleta=await ObtenerBoleta(codigo)
+  if (!boleta) return res.status(404).json({mensaje:'Boleta no encontrada'})
+  res.json(BoletaPublica(boleta))
+})
+
+Api.get('/boletas/:codigo/pdf',async (req,res)=>{
+  const codigo=String(req.params.codigo||'').toUpperCase()
+  if (!/^[A-Z0-9]{20,40}$/.test(codigo)) return res.status(400).json({mensaje:'Código de boleta inválido'})
+  const boleta=await ObtenerBoleta(codigo)
+  if (!boleta) return res.status(404).json({mensaje:'Boleta no encontrada'})
+  const url=`${req.protocol}://${req.get('host')}/?verificarboleta=${encodeURIComponent(codigo)}`
+  const pdf=await GenerarPdfBoleta(boleta,url)
+  const nombre=`boleta-${boleta.serie}-${String(boleta.numero).padStart(8,'0')}.pdf`
+  res.set('Content-Type','application/pdf')
+  res.set('Content-Disposition',`attachment; filename="${nombre}"`)
+  res.set('X-Content-Type-Options','nosniff')
+  res.set('Cache-Control','no-store')
+  res.send(pdf)
+})
+
 Api.post('/activarcuenta',LimiteActivacion,Validar(EsquemaActivacion),async (req,res)=>{
   const usuario=(await BaseDatos.query('SELECT * FROM usuarios WHERE correo=$1 AND activo=true LIMIT 1',[req.body.correo])).rows[0]
   const codigoValido=usuario?.codigoverificacion&&await bcrypt.compare(req.body.codigo,usuario.codigoverificacion)
@@ -224,7 +261,7 @@ Api.post('/activarcuenta',LimiteActivacion,Validar(EsquemaActivacion),async (req
   const nueva=await bcrypt.hash(req.body.clavenueva,12)
   await BaseDatos.query(
     `UPDATE usuarios SET clave=$1,correoverificado=true,debecambiarclave=false,codigoverificacion=NULL,
-     codigovence=NULL,versionsesion=versionsesion+1,actualizadoen=NOW() WHERE id=$2`,
+     codigovence=NULL,metodoactivacion='Codigo',versionsesion=versionsesion+1,actualizadoen=NOW() WHERE id=$2`,
     [nueva,usuario.id]
   )
   await RegistrarAuditoria(usuario.id,'ActivarCuenta','Usuario',usuario.id,{},req.ip)
@@ -234,8 +271,9 @@ Api.post('/activarcuenta',LimiteActivacion,Validar(EsquemaActivacion),async (req
 Api.post('/acceso',LimiteAcceso,Validar(EsquemaAcceso),async (req,res)=>{
   const usuario=(await BaseDatos.query('SELECT * FROM usuarios WHERE correo=$1 LIMIT 1',[req.body.correo])).rows[0]
   const bloqueado=usuario?.bloqueadohasta&&new Date(usuario.bloqueadohasta)>new Date()
-  const claveCorrecta=usuario&&!bloqueado&&await bcrypt.compare(req.body.clave,usuario.clave)
-  if (!usuario||!usuario.activo||!usuario.correoverificado||bloqueado||!claveCorrecta) {
+  const temporalVencida=usuario?.debecambiarclave&&usuario?.codigovence&&new Date(usuario.codigovence)<new Date()
+  const claveCorrecta=usuario&&!bloqueado&&!temporalVencida&&await bcrypt.compare(req.body.clave,usuario.clave)
+  if (!usuario||!usuario.activo||!usuario.correoverificado||bloqueado||temporalVencida||!claveCorrecta) {
     if (usuario&&!bloqueado) {
       await BaseDatos.query(
         `UPDATE usuarios SET intentosfallidos=intentosfallidos+1,
@@ -272,7 +310,7 @@ Api.post('/cambiarclave',Validar(EsquemaCambioClave),async (req,res)=>{
   if (!await bcrypt.compare(req.body.claveactual,usuario.clave)) return res.status(400).json({mensaje:'Contraseña actual incorrecta'})
   const nueva=await bcrypt.hash(req.body.clavenueva,12)
   await BaseDatos.query(
-    `UPDATE usuarios SET clave=$1,debecambiarclave=false,versionsesion=versionsesion+1,actualizadoen=NOW() WHERE id=$2`,
+    `UPDATE usuarios SET clave=$1,debecambiarclave=false,codigovence=NULL,versionsesion=versionsesion+1,actualizadoen=NOW() WHERE id=$2`,
     [nueva,usuario.id]
   )
   const actualizado={...usuario,versionsesion:Number(usuario.versionsesion)+1,debecambiarclave:false}
@@ -283,6 +321,22 @@ Api.post('/cambiarclave',Validar(EsquemaCambioClave),async (req,res)=>{
 })
 
 Api.use(ExigirClaveActualizada)
+
+Api.get('/empresa',Operacion,async (_,res)=>{
+  const registro=(await BaseDatos.query('SELECT * FROM configuracionempresa WHERE id=1')).rows[0]
+  res.json(registro)
+})
+
+Api.put('/empresa',Administrador,Validar(EsquemaEmpresa),async (req,res)=>{
+  const d=req.body
+  const registro=(await BaseDatos.query(
+    `UPDATE configuracionempresa SET nombrecomercial=$1,razonsocial=$2,ruc=$3,direccion=$4,
+     telefono=$5,correo=$6,serie=$7,actualizadoen=NOW() WHERE id=1 RETURNING *`,
+    [d.nombrecomercial,d.razonsocial,d.ruc,d.direccion,d.telefono,d.correo,d.serie]
+  )).rows[0]
+  await RegistrarAuditoria(req.usuario.id,'ConfigurarEmpresa','ConfiguracionEmpresa',1,{ruc:d.ruc,serie:d.serie},req.ip)
+  res.json(registro)
+})
 
 Api.get('/resumen',Operacion,async (req,res)=>{
   const cliente=await BaseDatos.connect()
@@ -389,6 +443,7 @@ Api.post('/movimientos',Almacen,Validar(EsquemaMovimiento),async (req,res)=>{
     const signo=['Entrada','Ajuste'].includes(req.body.tipo)?1:-1
     const nuevo=Number(producto.stockactual)+signo*req.body.cantidad
     if (nuevo<Number(producto.stockreservado)) throw new Error('El movimiento afectaría stock reservado')
+    if (nuevo>1000) throw new Error('El stock máximo permitido es 1000')
     await cliente.query('UPDATE productos SET stockactual=$1,actualizadoen=NOW() WHERE id=$2',[nuevo,producto.id])
     const movimiento=(await cliente.query(
       `INSERT INTO movimientos(productoid,tipo,cantidad,motivo,usuarioid)
@@ -484,7 +539,8 @@ Api.delete('/proveedores/:id/productos/:vinculoid',Administrador,ValidarIdentifi
 
 Api.get('/usuarios',Administrador,async (_,res)=>{
   const datos=await BaseDatos.query(
-    `SELECT id,nombres,apellidos,dni,correo,rol,activo,correoverificado,debecambiarclave,bloqueadohasta,esrespaldo,creadoen
+    `SELECT id,nombres,apellidos,dni,correo,rol,activo,correoverificado,debecambiarclave,
+       codigovence,intentosfallidos,bloqueadohasta,metodoactivacion,esrespaldo,creadoen
      FROM usuarios ORDER BY id DESC`
   )
   res.json(datos.rows)
@@ -495,9 +551,10 @@ Api.post('/usuarios',Administrador,Validar(EsquemaUsuario),async (req,res)=>{
   const clave=await bcrypt.hash(credenciales.temporal,12)
   const codigo=await bcrypt.hash(credenciales.codigo,10)
   const registro=(await BaseDatos.query(
-    `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,codigoverificacion,codigovence)
-     VALUES($1,$2,$3,$4,$5,$6,false,true,$7,NOW()+INTERVAL '30 minutes')
-     RETURNING id,nombres,apellidos,dni,correo,rol,activo,correoverificado`,
+    `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,
+       codigoverificacion,codigovence,metodoactivacion)
+     VALUES($1,$2,$3,$4,$5,$6,false,true,$7,NOW()+INTERVAL '30 minutes','Pendiente')
+     RETURNING id,nombres,apellidos,dni,correo,rol,activo,correoverificado,metodoactivacion`,
     [req.body.nombres,req.body.apellidos,req.body.dni,req.body.correo,clave,req.body.rol,codigo]
   )).rows[0]
   const cuerpo=`Su cuenta de Almacén Ágil fue creada.\nCódigo de verificación: ${credenciales.codigo}\nContraseña temporal: ${credenciales.temporal}\nActive su cuenta desde el portal de trabajadores.`
@@ -510,32 +567,56 @@ Api.post('/usuarios',Administrador,Validar(EsquemaUsuario),async (req,res)=>{
   })
 })
 
-Api.post('/usuarios/:id/reenviar',Administrador,ValidarIdentificador,async (req,res)=>{
+Api.post('/usuarios/:id/reenviar',Administrador,ValidarIdentificador,Validar(EsquemaConfirmacion),async (req,res)=>{
   const usuario=(await BaseDatos.query('SELECT * FROM usuarios WHERE id=$1 AND activo=true',[req.params.id])).rows[0]
-  if (!usuario) return res.status(404).json({mensaje:'Usuario no encontrado'})
-  if (usuario.correoverificado) return res.status(400).json({mensaje:'El correo ya fue verificado'})
+  if (!usuario) return res.status(404).json({mensaje:'Usuario no encontrado o desactivado'})
+  if (usuario.esrespaldo) return res.status(400).json({mensaje:'La cuenta de recuperación está protegida'})
+  if (usuario.correoverificado) return res.status(400).json({mensaje:'La cuenta ya está activada'})
   const credenciales=CrearCredenciales(usuario.dni,usuario.apellidos)
   const clave=await bcrypt.hash(credenciales.temporal,12)
   const codigo=await bcrypt.hash(credenciales.codigo,10)
   await BaseDatos.query(
-    `UPDATE usuarios SET clave=$1,codigoverificacion=$2,codigovence=NOW()+INTERVAL '30 minutes',actualizadoen=NOW() WHERE id=$3`,
+    `UPDATE usuarios SET clave=$1,codigoverificacion=$2,codigovence=NOW()+INTERVAL '30 minutes',
+       debecambiarclave=true,metodoactivacion='Pendiente',intentosfallidos=0,bloqueadohasta=NULL,
+       versionsesion=versionsesion+1,actualizadoen=NOW() WHERE id=$3`,
     [clave,codigo,usuario.id]
   )
   const cuerpo=`Nuevo código: ${credenciales.codigo}\nNueva contraseña temporal: ${credenciales.temporal}`
   const correo=await EnviarCorreo('Trabajador',usuario.correo,'Nuevo código de activación',cuerpo,null,'Nuevas credenciales de activación enviadas al trabajador')
-  await RegistrarAuditoria(req.usuario.id,'ReenviarActivacion','Usuario',usuario.id,{correo:usuario.correo},req.ip)
+  await RegistrarAuditoria(req.usuario.id,'GenerarCredencialesActivacion','Usuario',usuario.id,{correo:usuario.correo},req.ip)
   res.json({
     correoestado:correo.estado,
     credenciales:CredencialesEntregables(usuario.correo,credenciales,correo.estado)
   })
 })
 
-Api.patch('/usuarios/:id/estado',Administrador,ValidarIdentificador,async (req,res)=>{
-  if (req.params.id===req.usuario.id) return res.status(400).json({mensaje:'No puede bloquear su propia cuenta'})
+Api.post('/usuarios/:id/activar-manual',Administrador,ValidarIdentificador,Validar(EsquemaConfirmacion),async (req,res)=>{
+  const usuario=(await BaseDatos.query('SELECT * FROM usuarios WHERE id=$1',[req.params.id])).rows[0]
+  if (NoEncontrado(res,usuario)) return
+  if (usuario.esrespaldo) return res.status(400).json({mensaje:'La cuenta de recuperación está protegida'})
+  if (!usuario.activo) return res.status(409).json({mensaje:'Use Reactivar para una cuenta desactivada'})
+  if (usuario.correoverificado&&!usuario.debecambiarclave) return res.status(409).json({mensaje:'La cuenta ya está activa'})
+  const credenciales=CrearCredenciales(usuario.dni,usuario.apellidos)
+  const clave=await bcrypt.hash(credenciales.temporal,12)
+  const accion=usuario.correoverificado?'RenovarClaveTemporal':'ActivarUsuarioManual'
+  const registro=(await BaseDatos.query(
+    `UPDATE usuarios SET clave=$1,correoverificado=true,debecambiarclave=true,codigoverificacion=NULL,
+       codigovence=NOW()+INTERVAL '30 minutes',metodoactivacion='Administrador',intentosfallidos=0,
+       bloqueadohasta=NULL,versionsesion=versionsesion+1,actualizadoen=NOW()
+     WHERE id=$2 RETURNING id,activo,correoverificado,debecambiarclave,metodoactivacion,codigovence`,
+    [clave,usuario.id]
+  )).rows[0]
+  await RegistrarAuditoria(req.usuario.id,accion,'Usuario',usuario.id,{correo:usuario.correo},req.ip)
+  res.json({usuario:registro,credenciales:CredencialTemporal(usuario.correo,credenciales)})
+})
+
+Api.patch('/usuarios/:id/desactivar',Administrador,ValidarIdentificador,Validar(EsquemaConfirmacion),async (req,res)=>{
+  if (req.params.id===req.usuario.id) return res.status(400).json({mensaje:'No puede desactivar su propia cuenta'})
   const objetivo=(await BaseDatos.query('SELECT id,rol,activo,esrespaldo FROM usuarios WHERE id=$1',[req.params.id])).rows[0]
   if (NoEncontrado(res,objetivo)) return
   if (objetivo.esrespaldo) return res.status(400).json({mensaje:'La cuenta de recuperación está protegida'})
-  if (objetivo.rol==='Administrador'&&objetivo.activo) {
+  if (!objetivo.activo) return res.status(409).json({mensaje:'La cuenta ya está desactivada'})
+  if (objetivo.rol==='Administrador') {
     const restantes=Number((await BaseDatos.query(
       `SELECT COUNT(*) cantidad FROM usuarios WHERE rol='Administrador' AND activo=true AND id<>$1`,
       [objetivo.id]
@@ -543,23 +624,43 @@ Api.patch('/usuarios/:id/estado',Administrador,ValidarIdentificador,async (req,r
     if (restantes<1) return res.status(409).json({mensaje:'Debe permanecer al menos un administrador activo'})
   }
   const registro=(await BaseDatos.query(
-    `UPDATE usuarios SET activo=NOT activo,versionsesion=versionsesion+1,
-       intentosfallidos=CASE WHEN activo=false THEN 0 ELSE intentosfallidos END,
-       bloqueadohasta=CASE WHEN activo=false THEN NULL ELSE bloqueadohasta END,actualizadoen=NOW()
+    `UPDATE usuarios SET activo=false,codigoverificacion=NULL,codigovence=NULL,intentosfallidos=0,
+       bloqueadohasta=NULL,versionsesion=versionsesion+1,actualizadoen=NOW()
      WHERE id=$1 RETURNING id,activo`,
-    [req.params.id]
+    [objetivo.id]
   )).rows[0]
-  await RegistrarAuditoria(req.usuario.id,'CambiarEstadoUsuario','Usuario',registro.id,{activo:registro.activo},req.ip)
+  await RegistrarAuditoria(req.usuario.id,'DesactivarUsuario','Usuario',registro.id,{activo:false},req.ip)
   res.json(registro)
 })
 
-Api.patch('/usuarios/:id/desbloquear',Administrador,ValidarIdentificador,async (req,res)=>{
+Api.post('/usuarios/:id/reactivar',Administrador,ValidarIdentificador,Validar(EsquemaConfirmacion),async (req,res)=>{
+  const usuario=(await BaseDatos.query('SELECT * FROM usuarios WHERE id=$1',[req.params.id])).rows[0]
+  if (NoEncontrado(res,usuario)) return
+  if (usuario.esrespaldo) return res.status(400).json({mensaje:'La cuenta de recuperación está protegida'})
+  if (usuario.activo) return res.status(409).json({mensaje:'La cuenta ya está activa'})
+  const credenciales=CrearCredenciales(usuario.dni,usuario.apellidos)
+  const clave=await bcrypt.hash(credenciales.temporal,12)
+  const registro=(await BaseDatos.query(
+    `UPDATE usuarios SET activo=true,clave=$1,correoverificado=true,debecambiarclave=true,
+       codigoverificacion=NULL,codigovence=NOW()+INTERVAL '30 minutes',metodoactivacion='Administrador',
+       intentosfallidos=0,bloqueadohasta=NULL,versionsesion=versionsesion+1,actualizadoen=NOW()
+     WHERE id=$2 RETURNING id,activo,correoverificado,debecambiarclave,metodoactivacion,codigovence`,
+    [clave,usuario.id]
+  )).rows[0]
+  await RegistrarAuditoria(req.usuario.id,'ReactivarUsuario','Usuario',usuario.id,{correo:usuario.correo},req.ip)
+  res.json({usuario:registro,credenciales:CredencialTemporal(usuario.correo,credenciales)})
+})
+
+Api.patch('/usuarios/:id/desbloquear',Administrador,ValidarIdentificador,Validar(EsquemaConfirmacion),async (req,res)=>{
+  const objetivo=(await BaseDatos.query('SELECT id,activo,intentosfallidos,bloqueadohasta FROM usuarios WHERE id=$1',[req.params.id])).rows[0]
+  if (NoEncontrado(res,objetivo)) return
+  if (!objetivo.activo) return res.status(409).json({mensaje:'La cuenta está desactivada'})
+  if (!objetivo.bloqueadohasta&&Number(objetivo.intentosfallidos)===0) return res.status(409).json({mensaje:'La cuenta no está bloqueada'})
   const registro=(await BaseDatos.query(
     `UPDATE usuarios SET intentosfallidos=0,bloqueadohasta=NULL,versionsesion=versionsesion+1,actualizadoen=NOW()
      WHERE id=$1 RETURNING id,activo,bloqueadohasta`,
     [req.params.id]
   )).rows[0]
-  if (NoEncontrado(res,registro)) return
   await RegistrarAuditoria(req.usuario.id,'DesbloquearUsuario','Usuario',registro.id,{},req.ip)
   res.json(registro)
 })
@@ -570,6 +671,8 @@ Api.get('/cotizaciones',Operacion,async (req,res)=>{
     : ''
   const datos=await BaseDatos.query(`
     SELECT c.*,
+      (SELECT b.codigo FROM boletas b WHERE b.cotizacionid=c.id) boletacodigo,
+      (SELECT b.serie||'-'||LPAD(b.numero::text,8,'0') FROM boletas b WHERE b.cotizacionid=c.id) boletanumero,
       COALESCE(json_agg(json_build_object(
         'id',d.id,'productoid',d.productoid,'producto',p.nombre,'codigo',p.codigo,
         'cantidad',d.cantidad,'cantidadreservada',d.cantidadreservada,'precio',d.precio,
@@ -704,13 +807,55 @@ Api.post('/cotizaciones/:id/lista',Almacen,ValidarIdentificador,Validar(EsquemaO
 })
 
 Api.post('/cotizaciones/:id/entregar',Operacion,ValidarIdentificador,Validar(EsquemaObservacion),async (req,res)=>{
-  const registro=(await BaseDatos.query(
-    `UPDATE cotizaciones SET estado='Entregada',actualizadoen=NOW()
-     WHERE id=$1 AND estado='ListaRecojo' RETURNING *`,[req.params.id])).rows[0]
-  if (!registro) return res.status(409).json({mensaje:'El pedido no está listo para recojo'})
-  await RegistrarHistorialCotizacion(BaseDatos,registro.id,'ListaRecojo','Entregada',req.body.observacion,req.usuario.id)
-  await RegistrarAuditoria(req.usuario.id,'EntregarPedido','Cotizacion',registro.id,{},req.ip)
-  res.json(await CotizacionCompleta(registro.id))
+  const cliente=await BaseDatos.connect()
+  try {
+    await cliente.query('BEGIN')
+    const registro=(await cliente.query(
+      `UPDATE cotizaciones SET estado='Entregada',actualizadoen=NOW()
+       WHERE id=$1 AND estado='ListaRecojo' RETURNING *`,[req.params.id])).rows[0]
+    if (!registro) throw new Error('El pedido no está listo para recojo')
+    await RegistrarHistorialCotizacion(cliente,registro.id,'ListaRecojo','Entregada',req.body.observacion,req.usuario.id)
+    const boleta=await CrearBoleta(cliente,registro.id,req.usuario.id)
+    await RegistrarAuditoria(req.usuario.id,'EntregarPedido','Cotizacion',registro.id,{boletacodigo:boleta.codigo},req.ip,cliente)
+    await cliente.query('COMMIT')
+    res.json(await CotizacionCompleta(registro.id))
+  } catch (error) {
+    await cliente.query('ROLLBACK')
+    res.status(409).json({mensaje:error.message})
+  } finally { cliente.release() }
+})
+
+Api.post('/cotizaciones/:id/boleta',Operacion,ValidarIdentificador,async (req,res)=>{
+  const cliente=await BaseDatos.connect()
+  try {
+    await cliente.query('BEGIN')
+    const boleta=await CrearBoleta(cliente,req.params.id,req.usuario.id)
+    await RegistrarAuditoria(req.usuario.id,'GenerarBoleta','Cotizacion',req.params.id,{codigo:boleta.codigo},req.ip,cliente)
+    await cliente.query('COMMIT')
+    res.json({codigo:boleta.codigo,numero:`${boleta.serie}-${String(boleta.numero).padStart(8,'0')}`})
+  } catch (error) {
+    await cliente.query('ROLLBACK')
+    res.status(409).json({mensaje:error.message})
+  } finally { cliente.release() }
+})
+
+Api.get('/cotizaciones/:id/boleta/pdf',Operacion,ValidarIdentificador,async (req,res)=>{
+  const cliente=await BaseDatos.connect()
+  try {
+    await cliente.query('BEGIN')
+    const boleta=await CrearBoleta(cliente,req.params.id,req.usuario.id)
+    await cliente.query('COMMIT')
+    const url=`${req.protocol}://${req.get('host')}/?verificarboleta=${encodeURIComponent(boleta.codigo)}`
+    const pdf=await GenerarPdfBoleta(boleta,url)
+    res.set('Content-Type','application/pdf')
+    res.set('Content-Disposition',`attachment; filename="boleta-${boleta.serie}-${String(boleta.numero).padStart(8,'0')}.pdf"`)
+    res.set('X-Content-Type-Options','nosniff')
+    res.set('Cache-Control','no-store')
+    res.send(pdf)
+  } catch (error) {
+    await cliente.query('ROLLBACK')
+    res.status(409).json({mensaje:error.message})
+  } finally { cliente.release() }
 })
 
 Api.get('/reabastecimientos',Almacen,async (_,res)=>{
@@ -847,6 +992,8 @@ Api.post('/recepciones',Almacen,Validar(EsquemaRecepcion),async (req,res)=>{
     await cliente.query('BEGIN')
     const r=(await cliente.query('SELECT * FROM reabastecimientos WHERE id=$1 FOR UPDATE',[req.body.reabastecimientoid])).rows[0]
     if (!r||r.estado!=='EnTransito') throw new Error('La compra no está en tránsito')
+    const productoRecepcion=(await cliente.query('SELECT stockactual FROM productos WHERE id=$1 FOR UPDATE',[r.productoid])).rows[0]
+    if (Number(productoRecepcion.stockactual)+Number(req.body.recibida)>1000) throw new Error('La recepción superaría el stock máximo de 1000')
     if (req.body.recibida+req.body.faltantes+req.body.defectuosos!==Number(r.cantidadrequerida)) throw new Error('Las cantidades deben completar la orden')
     const estado=req.body.faltantes||req.body.defectuosos?'RecibidoObservado':'Recibido'
     const recepcion=(await cliente.query(

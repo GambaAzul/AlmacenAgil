@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   intentosfallidos INTEGER NOT NULL DEFAULT 0 CHECK (intentosfallidos >= 0),
   bloqueadohasta TIMESTAMPTZ,
   versionsesion INTEGER NOT NULL DEFAULT 1 CHECK (versionsesion > 0),
+  metodoactivacion VARCHAR(20) NOT NULL DEFAULT 'Pendiente' CHECK (metodoactivacion IN ('Pendiente','Codigo','Administrador','Inicial')),
   esrespaldo BOOLEAN NOT NULL DEFAULT FALSE,
   creadoen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -26,8 +27,20 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigovence TIMESTAMPTZ;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS intentosfallidos INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueadohasta TIMESTAMPTZ;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS versionsesion INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS metodoactivacion VARCHAR(20) NOT NULL DEFAULT 'Pendiente';
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS esrespaldo BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+UPDATE usuarios SET metodoactivacion='Inicial'
+WHERE correoverificado=true AND metodoactivacion='Pendiente';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='usuarios_metodoactivacion_check') THEN
+    ALTER TABLE usuarios ADD CONSTRAINT usuarios_metodoactivacion_check
+      CHECK (metodoactivacion IN ('Pendiente','Codigo','Administrador','Inicial'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS categorias (
   id SERIAL PRIMARY KEY,
@@ -44,15 +57,15 @@ CREATE TABLE IF NOT EXISTS productos (
   material VARCHAR(80) NOT NULL DEFAULT 'No especificado' CHECK (LENGTH(BTRIM(material)) BETWEEN 1 AND 80),
   grosor VARCHAR(40) NOT NULL DEFAULT 'No aplica' CHECK (LENGTH(BTRIM(grosor)) BETWEEN 1 AND 40),
   dimensiones VARCHAR(80) NOT NULL DEFAULT 'No especificada' CHECK (LENGTH(BTRIM(dimensiones)) BETWEEN 1 AND 80),
-  maximopedido INTEGER NOT NULL DEFAULT 100 CHECK (maximopedido BETWEEN 1 AND 10000),
+  maximopedido INTEGER NOT NULL DEFAULT 100 CHECK (maximopedido BETWEEN 1 AND 1000),
   precioventa NUMERIC(12,2) NOT NULL CHECK (precioventa >= 0),
   preciocompra NUMERIC(12,2) NOT NULL CHECK (preciocompra >= 0),
   descuentoventa NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (descuentoventa BETWEEN 0 AND 100),
   descuentocompra NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (descuentocompra BETWEEN 0 AND 100),
-  stockactual INTEGER NOT NULL CHECK (stockactual >= 0),
-  stockreservado INTEGER NOT NULL DEFAULT 0 CHECK (stockreservado >= 0 AND stockreservado <= stockactual),
-  stockminimo INTEGER NOT NULL CHECK (stockminimo >= 0),
-  stockmensual INTEGER NOT NULL CHECK (stockmensual >= 0),
+  stockactual INTEGER NOT NULL CHECK (stockactual BETWEEN 0 AND 1000),
+  stockreservado INTEGER NOT NULL DEFAULT 0 CHECK (stockreservado BETWEEN 0 AND 1000 AND stockreservado <= stockactual),
+  stockminimo INTEGER NOT NULL CHECK (stockminimo BETWEEN 0 AND 1000),
+  stockmensual INTEGER NOT NULL CHECK (stockmensual BETWEEN 0 AND 1000),
   imagen TEXT NOT NULL DEFAULT '',
   activo BOOLEAN NOT NULL DEFAULT TRUE,
   actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -69,6 +82,29 @@ ALTER TABLE productos ADD COLUMN IF NOT EXISTS stockreservado INTEGER NOT NULL D
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS imagen TEXT NOT NULL DEFAULT '';
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+UPDATE productos SET
+  stockreservado=LEAST(GREATEST(stockreservado,0),1000),
+  stockminimo=LEAST(GREATEST(stockminimo,0),1000),
+  stockmensual=LEAST(GREATEST(stockmensual,0),1000),
+  maximopedido=LEAST(GREATEST(maximopedido,1),1000);
+UPDATE productos SET stockactual=LEAST(GREATEST(stockactual,stockreservado),1000);
+
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockactual_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockreservado_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockminimo_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockmensual_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockactual_limite_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockreservado_limite_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockminimo_limite_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_stockmensual_limite_check;
+ALTER TABLE productos ADD CONSTRAINT productos_stockactual_limite_check CHECK (stockactual BETWEEN 0 AND 1000);
+ALTER TABLE productos ADD CONSTRAINT productos_stockreservado_limite_check CHECK (stockreservado BETWEEN 0 AND 1000 AND stockreservado <= stockactual);
+ALTER TABLE productos ADD CONSTRAINT productos_stockminimo_limite_check CHECK (stockminimo BETWEEN 0 AND 1000);
+ALTER TABLE productos ADD CONSTRAINT productos_stockmensual_limite_check CHECK (stockmensual BETWEEN 0 AND 1000);
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_maximopedido_check;
+ALTER TABLE productos DROP CONSTRAINT IF EXISTS productos_maximopedido_limite_check;
+ALTER TABLE productos ADD CONSTRAINT productos_maximopedido_limite_check CHECK (maximopedido BETWEEN 1 AND 1000);
+
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='productos_tipoproducto_check') THEN
     ALTER TABLE productos ADD CONSTRAINT productos_tipoproducto_check CHECK (tipoproducto IN ('Papel','Cartón','Sobres','Otros'));
@@ -81,9 +117,6 @@ DO $$ BEGIN
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='productos_dimensiones_check') THEN
     ALTER TABLE productos ADD CONSTRAINT productos_dimensiones_check CHECK (LENGTH(BTRIM(dimensiones)) BETWEEN 1 AND 80);
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='productos_maximopedido_check') THEN
-    ALTER TABLE productos ADD CONSTRAINT productos_maximopedido_check CHECK (maximopedido BETWEEN 1 AND 10000);
   END IF;
 END $$;
 
@@ -173,7 +206,7 @@ CREATE TABLE IF NOT EXISTS detallecotizacion (
   id SERIAL PRIMARY KEY,
   cotizacionid INTEGER NOT NULL REFERENCES cotizaciones(id) ON DELETE CASCADE,
   productoid INTEGER NOT NULL REFERENCES productos(id),
-  cantidad INTEGER NOT NULL CHECK (cantidad BETWEEN 1 AND 10000),
+  cantidad INTEGER NOT NULL CHECK (cantidad BETWEEN 1 AND 1000),
   precio NUMERIC(12,2) NOT NULL CHECK (precio >= 0),
   descuentofijo NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (descuentofijo BETWEEN 0 AND 100),
   descuentovolumen NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (descuentovolumen BETWEEN 0 AND 100),
@@ -197,6 +230,8 @@ DO $$ BEGIN
 END $$;
 
 ALTER TABLE detallecotizacion ADD COLUMN IF NOT EXISTS cantidadreservada INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE detallecotizacion DROP CONSTRAINT IF EXISTS detallecotizacion_cantidad_limite_check;
+ALTER TABLE detallecotizacion ADD CONSTRAINT detallecotizacion_cantidad_limite_check CHECK (cantidad BETWEEN 1 AND 1000) NOT VALID;
 
 CREATE TABLE IF NOT EXISTS historialcotizaciones (
   id BIGSERIAL PRIMARY KEY,
@@ -212,7 +247,7 @@ CREATE TABLE IF NOT EXISTS movimientos (
   id BIGSERIAL PRIMARY KEY,
   productoid INTEGER NOT NULL REFERENCES productos(id),
   tipo VARCHAR(30) NOT NULL CHECK (tipo IN ('Entrada','Salida','Merma','Ajuste','Reserva','Liberacion')),
-  cantidad INTEGER NOT NULL CHECK (cantidad > 0),
+  cantidad INTEGER NOT NULL CHECK (cantidad BETWEEN 1 AND 1000),
   motivo VARCHAR(250) NOT NULL,
   usuarioid INTEGER REFERENCES usuarios(id),
   cotizacionid INTEGER REFERENCES cotizaciones(id),
@@ -224,13 +259,15 @@ ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS movimientos_tipo_check;
 ALTER TABLE movimientos ADD CONSTRAINT movimientos_tipo_check CHECK (tipo IN ('Entrada','Salida','Merma','Ajuste','Reserva','Liberacion'));
 ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS cotizacionid INTEGER REFERENCES cotizaciones(id);
 ALTER TABLE movimientos ADD COLUMN IF NOT EXISTS reabastecimientoid INTEGER;
+ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS movimientos_cantidad_limite_check;
+ALTER TABLE movimientos ADD CONSTRAINT movimientos_cantidad_limite_check CHECK (cantidad BETWEEN 1 AND 1000) NOT VALID;
 
 CREATE TABLE IF NOT EXISTS reabastecimientos (
   id SERIAL PRIMARY KEY,
   productoid INTEGER NOT NULL REFERENCES productos(id),
   cotizacionid INTEGER REFERENCES cotizaciones(id),
   motivo VARCHAR(30) NOT NULL CHECK (motivo IN ('Cotizacion','StockMinimo','StockMensual','Auditoria','Manual')),
-  cantidadrequerida INTEGER NOT NULL CHECK (cantidadrequerida > 0),
+  cantidadrequerida INTEGER NOT NULL CHECK (cantidadrequerida BETWEEN 1 AND 1000),
   estado VARCHAR(35) NOT NULL DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente','ProveedorSeleccionado','PagoRegistrado','EnTransito','Recibido','RecibidoObservado','Cancelado')),
   proveedorid INTEGER REFERENCES proveedores(id),
   ordencompra VARCHAR(40) UNIQUE,
@@ -242,6 +279,9 @@ CREATE TABLE IF NOT EXISTS reabastecimientos (
   creadoen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE reabastecimientos DROP CONSTRAINT IF EXISTS reabastecimientos_cantidad_limite_check;
+ALTER TABLE reabastecimientos ADD CONSTRAINT reabastecimientos_cantidad_limite_check CHECK (cantidadrequerida BETWEEN 1 AND 1000) NOT VALID;
 
 ALTER TABLE movimientos DROP CONSTRAINT IF EXISTS movimientos_reabastecimientoid_fkey;
 ALTER TABLE movimientos ADD CONSTRAINT movimientos_reabastecimientoid_fkey FOREIGN KEY (reabastecimientoid) REFERENCES reabastecimientos(id);
@@ -260,10 +300,10 @@ CREATE TABLE IF NOT EXISTS recepciones (
   id SERIAL PRIMARY KEY,
   reabastecimientoid INTEGER UNIQUE REFERENCES reabastecimientos(id),
   proveedorid INTEGER NOT NULL REFERENCES proveedores(id),
-  solicitada INTEGER NOT NULL DEFAULT 0 CHECK (solicitada >= 0),
-  recibida INTEGER NOT NULL DEFAULT 0 CHECK (recibida >= 0),
-  faltantes INTEGER NOT NULL DEFAULT 0 CHECK (faltantes >= 0),
-  defectuosos INTEGER NOT NULL DEFAULT 0 CHECK (defectuosos >= 0),
+  solicitada INTEGER NOT NULL DEFAULT 0 CHECK (solicitada BETWEEN 0 AND 1000),
+  recibida INTEGER NOT NULL DEFAULT 0 CHECK (recibida BETWEEN 0 AND 1000),
+  faltantes INTEGER NOT NULL DEFAULT 0 CHECK (faltantes BETWEEN 0 AND 1000),
+  defectuosos INTEGER NOT NULL DEFAULT 0 CHECK (defectuosos BETWEEN 0 AND 1000),
   observacion VARCHAR(500) NOT NULL,
   usuarioid INTEGER REFERENCES usuarios(id),
   creadoen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -274,6 +314,11 @@ ALTER TABLE recepciones ADD COLUMN IF NOT EXISTS reabastecimientoid INTEGER UNIQ
 ALTER TABLE recepciones ADD COLUMN IF NOT EXISTS solicitada INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE recepciones ADD COLUMN IF NOT EXISTS recibida INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE recepciones ADD COLUMN IF NOT EXISTS usuarioid INTEGER REFERENCES usuarios(id);
+ALTER TABLE recepciones DROP CONSTRAINT IF EXISTS recepciones_cantidades_limite_check;
+ALTER TABLE recepciones ADD CONSTRAINT recepciones_cantidades_limite_check CHECK (
+  solicitada BETWEEN 0 AND 1000 AND recibida BETWEEN 0 AND 1000 AND
+  faltantes BETWEEN 0 AND 1000 AND defectuosos BETWEEN 0 AND 1000
+) NOT VALID;
 
 CREATE TABLE IF NOT EXISTS auditoriasinventario (
   id SERIAL PRIMARY KEY,
@@ -287,8 +332,8 @@ CREATE TABLE IF NOT EXISTS detalleauditoria (
   id BIGSERIAL PRIMARY KEY,
   auditoriaid INTEGER NOT NULL REFERENCES auditoriasinventario(id) ON DELETE CASCADE,
   productoid INTEGER NOT NULL REFERENCES productos(id),
-  stocksistema INTEGER NOT NULL CHECK (stocksistema >= 0),
-  stockcontado INTEGER NOT NULL CHECK (stockcontado >= 0),
+  stocksistema INTEGER NOT NULL CHECK (stocksistema BETWEEN 0 AND 1000),
+  stockcontado INTEGER NOT NULL CHECK (stockcontado BETWEEN 0 AND 1000),
   diferencia INTEGER NOT NULL,
   UNIQUE(auditoriaid,productoid)
 );
@@ -297,10 +342,17 @@ CREATE TABLE IF NOT EXISTS revisionesmensuales (
   id BIGSERIAL PRIMARY KEY,
   productoid INTEGER NOT NULL REFERENCES productos(id),
   periodo CHAR(7) NOT NULL CHECK (periodo ~ '^[0-9]{4}-[0-9]{2}$'),
-  stockrevisado INTEGER NOT NULL CHECK (stockrevisado >= 0),
+  stockrevisado INTEGER NOT NULL CHECK (stockrevisado BETWEEN 0 AND 1000),
   creadoen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(productoid,periodo)
 );
+
+ALTER TABLE detalleauditoria DROP CONSTRAINT IF EXISTS detalleauditoria_stock_limite_check;
+ALTER TABLE detalleauditoria ADD CONSTRAINT detalleauditoria_stock_limite_check CHECK (
+  stocksistema BETWEEN 0 AND 1000 AND stockcontado BETWEEN 0 AND 1000
+) NOT VALID;
+ALTER TABLE revisionesmensuales DROP CONSTRAINT IF EXISTS revisionesmensuales_stock_limite_check;
+ALTER TABLE revisionesmensuales ADD CONSTRAINT revisionesmensuales_stock_limite_check CHECK (stockrevisado BETWEEN 0 AND 1000) NOT VALID;
 
 CREATE TABLE IF NOT EXISTS notificaciones (
   id BIGSERIAL PRIMARY KEY,
@@ -324,6 +376,39 @@ CREATE TABLE IF NOT EXISTS auditoriaacciones (
   direccionip VARCHAR(80),
   creadoen TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS configuracionempresa (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id=1),
+  nombrecomercial VARCHAR(120) NOT NULL,
+  razonsocial VARCHAR(160) NOT NULL,
+  ruc CHAR(11) NOT NULL CHECK (ruc ~ '^[0-9]{11}$'),
+  direccion VARCHAR(220) NOT NULL,
+  telefono VARCHAR(15) NOT NULL CHECK (telefono ~ '^[+]?[0-9]{7,15}$'),
+  correo VARCHAR(160) NOT NULL CHECK (correo=LOWER(correo)),
+  serie CHAR(4) NOT NULL CHECK (serie ~ '^[A-Z0-9]{4}$'),
+  actualizadoen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO configuracionempresa(id,nombrecomercial,razonsocial,ruc,direccion,telefono,correo,serie)
+VALUES(1,'ALMACÉN ÁGIL','Almacén Ágil','00000000000','Dirección pendiente de configurar','000000000','ventas@almacenagil.pe','BI01')
+ON CONFLICT (id) DO NOTHING;
+
+CREATE SEQUENCE IF NOT EXISTS secuenciaboletas START 1;
+
+CREATE TABLE IF NOT EXISTS boletas (
+  id BIGSERIAL PRIMARY KEY,
+  cotizacionid INTEGER UNIQUE NOT NULL REFERENCES cotizaciones(id),
+  serie CHAR(4) NOT NULL CHECK (serie ~ '^[A-Z0-9]{4}$'),
+  numero BIGINT UNIQUE NOT NULL DEFAULT nextval('secuenciaboletas'),
+  codigo VARCHAR(40) UNIQUE NOT NULL CHECK (codigo ~ '^[A-Z0-9]{20,40}$'),
+  contenido JSONB NOT NULL,
+  huella CHAR(64) NOT NULL CHECK (huella ~ '^[a-f0-9]{64}$'),
+  usuarioid INTEGER REFERENCES usuarios(id),
+  emitidaen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS indiceboletascodigo ON boletas(codigo);
+CREATE INDEX IF NOT EXISTS indiceboletasfecha ON boletas(emitidaen DESC);
 
 CREATE INDEX IF NOT EXISTS indiceproductosactivo ON productos(activo);
 CREATE INDEX IF NOT EXISTS indiceproductosfiltros ON productos(tipoproducto,material,grosor,dimensiones);

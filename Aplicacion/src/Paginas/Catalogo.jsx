@@ -3,7 +3,7 @@ import { Search,ShoppingCart,X } from 'lucide-react'
 import { Solicitar } from '../Servicios/Api'
 import { Campo } from '../Componentes/Campo'
 import { CalcularLinea } from '../Servicios/Descuentos'
-import { CorreoValido } from '../Validaciones/Reglas'
+import { CorreoValido,EnteroLimitado,LimiteStock } from '../Validaciones/Reglas'
 
 const FiltrosVacios={tipoproducto:'',material:'',grosor:'',dimensiones:''}
 
@@ -66,7 +66,7 @@ export function Catalogo() {
         precio:Number(producto.precioventa),
         descuentofijo:Number(producto.descuentoventa),
         stock:Number(producto.stockdisponible),
-        maximo:Number(producto.maximopedido),
+        maximo:Math.min(LimiteStock,Number(producto.maximopedido)||1),
         cantidad:1
       }]
     }
@@ -134,7 +134,7 @@ export function Catalogo() {
     </section>
     <footer id="contacto">
       <b>ALMACÉN ÁGIL</b>
-      <p>Distribución mayorista de suministros para empresas.</p>
+      <p>Distribución mayorista de suministros para empresas.</p><a className="enlaceboleta" href="?verificarboleta=">Verificar boleta interna</a>
     </footer>
     {mostrar&&<Cotizador
       carrito={carrito}
@@ -201,7 +201,7 @@ function Cotizador({carrito,setCarrito,cerrar,finalizado}) {
             step="1"
             value={item.cantidad}
             onChange={evento=>setCarrito(actual=>actual.map(producto=>producto.productoid===item.productoid
-              ? {...producto,cantidad:Math.max(1,Math.min(item.maximo,Number(evento.target.value)||1))}
+              ? {...producto,cantidad:Number(EnteroLimitado(evento.target.value,item.maximo,1)||1)}
               : producto
             ))}
           />

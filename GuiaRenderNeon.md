@@ -1,6 +1,6 @@
 El despliegue remoto utiliza un único servicio Docker en Render y PostgreSQL administrado en Neon.
 
-Arquitectura
+ Arquitectura
 
 text
 Navegador
@@ -13,7 +13,7 @@ Render
       Neon PostgreSQL
 
 
-1. Crear la base en Neon
+ 1. Crear la base en Neon
 
 1. Crea un proyecto llamado “AlmacenAgil”.
 2. Pulsa “Connect”.
@@ -25,7 +25,7 @@ El servidor normaliza la conexión de Neon a “sslmode=verify-full” antes de 
 
 No ejecutes manualmente “Inicial.sql”. El servidor aplica el esquema de forma idempotente al iniciar y conserva los registros existentes.
 
-2. Preparar contraseñas
+ 2. Preparar contraseñas
 
 Ejecuta localmente una sola vez:
 
@@ -48,7 +48,7 @@ text
 respaldo@almacenagil.pe
 
 
-3. Subir a GitHub
+ 3. Subir a GitHub
 
 Comprueba:
 
@@ -59,7 +59,7 @@ git status
 
 “.env” debe permanecer fuera del repositorio.
 
-4. Crear el servicio en Render
+ 4. Crear el servicio en Render
 
 1. Selecciona “New” y luego “Blueprint”.
 2. Conecta el repositorio.
@@ -74,7 +74,7 @@ git status
 
 “SECRETOACCESO” se genera automáticamente.
 
-5. Correo opcional
+ 5. Correo opcional
 
 Sin SMTP, la creación de un trabajador sigue funcionando: el administrador recibe el código y la contraseña temporal en una ventana protegida.
 
@@ -91,7 +91,7 @@ REMITENTECORREO
 
 Si el envío falla, el sistema conserva la notificación y muestra las credenciales al administrador para entrega manual.
 
-6. Comprobación
+ 6. Comprobación
 
 text
 https://nombre-del-servicio.onrender.com/api/salud
@@ -109,7 +109,7 @@ text
 https://nombre-del-servicio.onrender.com/?portal=1
 
 
-7. Recuperación administrativa
+ 7. Recuperación administrativa
 
 Si la cuenta principal queda bloqueada:
 
@@ -119,14 +119,14 @@ Si la cuenta principal queda bloqueada:
 
 La cuenta de recuperación se reactiva y sincroniza con “CLAVEADMINRESPALDO” cada vez que el servicio inicia.
 
-8. Actualizaciones
+ 8. Actualizaciones
 
 Cada despliegue vuelve a ejecutar la migración idempotente. Las nuevas columnas, filtros y descuentos se agregan sin borrar trabajadores, cotizaciones ni inventario.
 
-9. A+
+ 9. A+
 
 Escanea el dominio raíz en MDN HTTP Observatory. La imagen conserva CSP, HSTS, “nosniff”, protección contra marcos, CORP, COOP, políticas de permisos y redirección a HTTPS.
 
-10. Suspensión gratuita
+ 10. Suspensión gratuita
 
-Nota de Gamba: Render puede suspender el servicio por inactividad. Neon conserva los datos.
+Render puede suspender el servicio por inactividad. Neon conserva los datos. Abre la web con anticipación antes de una demostración.

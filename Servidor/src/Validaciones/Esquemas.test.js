@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import {
   EsquemaActivacion,
   EsquemaAuditoria,
+  EsquemaConfirmacion,
   EsquemaCotizacion,
+  EsquemaEmpresa,
   EsquemaPagoProveedor,
   EsquemaProducto,
   EsquemaProveedor,
@@ -37,3 +39,13 @@ test('rechaza codigo de activacion incompleto',()=>assert.equal(EsquemaActivacio
 test('acepta archivo permitido',()=>assert.equal(EsquemaPagoProveedor.safeParse({archivo:ArchivoValido,observacion:''}).success,true))
 test('rechaza recepcion negativa',()=>assert.equal(EsquemaRecepcion.safeParse({reabastecimientoid:1,recibida:-1,faltantes:0,defectuosos:0,observacion:'Prueba'}).success,false))
 test('rechaza productos repetidos en auditoria',()=>assert.equal(EsquemaAuditoria.safeParse({observacion:'Conteo',productos:[{productoid:1,stockcontado:5},{productoid:1,stockcontado:6}]}).success,false))
+
+test('rechaza stock mayor a mil',()=>assert.equal(EsquemaProducto.safeParse({...ProductoValido,stockactual:1001}).success,false))
+test('rechaza máximo de pedido mayor a mil',()=>assert.equal(EsquemaProducto.safeParse({...ProductoValido,maximopedido:1001}).success,false))
+test('rechaza cotización con cantidad mayor a mil',()=>assert.equal(EsquemaCotizacion.safeParse({...CotizacionValida,productos:[{productoid:1,cantidad:1001}]}).success,false))
+test('rechaza recepción total mayor a mil',()=>assert.equal(EsquemaRecepcion.safeParse({reabastecimientoid:1,recibida:700,faltantes:200,defectuosos:200,observacion:'Prueba'}).success,false))
+test('acepta datos de emisión válidos',()=>assert.equal(EsquemaEmpresa.safeParse({nombrecomercial:'Almacén Ágil',razonsocial:'Almacén Ágil',ruc:'00000000000',direccion:'Trujillo',telefono:'987654321',correo:'ventas@almacenagil.pe',serie:'BI01'}).success,true))
+
+test('acepta confirmación explícita',()=>assert.equal(EsquemaConfirmacion.safeParse({confirmacion:true}).success,true))
+test('rechaza acción administrativa sin confirmación',()=>assert.equal(EsquemaConfirmacion.safeParse({confirmacion:false}).success,false))
+test('rechaza campos extra en acción administrativa',()=>assert.equal(EsquemaConfirmacion.safeParse({confirmacion:true,forzar:true}).success,false))

@@ -3,6 +3,7 @@ import { Campo } from '../../Componentes/Campo'
 import { Estado,FormatoFecha,Mensaje,Modal,Titulo } from '../../Componentes/Comun'
 import { UsarSesion } from '../../Contextos/Sesion'
 import { Descargar,LeerArchivo,Solicitar } from '../../Servicios/Api'
+import { EnteroLimitado,LimiteStock } from '../../Validaciones/Reglas'
 
 export function Reabastecimientos() {
   const { usuario }=UsarSesion()
@@ -74,7 +75,7 @@ export function Reabastecimientos() {
     </table></div>
     {modal==='manual'&&<Modal titulo="Reabastecimiento manual" cerrar={()=>setModal('')}><form onSubmit={crearManual}>
       <label className="campo"><span>Producto</span><select value={manual.productoid} onChange={e=>setManual({...manual,productoid:e.target.value})}>{productos.filter(p=>p.activo).map(p=><option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}</select></label>
-      <Campo etiqueta="Cantidad requerida" type="number" min="1" value={manual.cantidadrequerida} onChange={e=>setManual({...manual,cantidadrequerida:e.target.value.replace(/\D/g,'')})} required/>
+      <Campo etiqueta="Cantidad requerida" type="number" min="1" max={LimiteStock} value={manual.cantidadrequerida} onChange={e=>setManual({...manual,cantidadrequerida:EnteroLimitado(e.target.value,LimiteStock,1)})} required/>
       <Campo etiqueta="Motivo" value={manual.observacion} onChange={e=>setManual({...manual,observacion:e.target.value.slice(0,500)})} minLength="3" required/>
       <button className="principal">Crear solicitud</button>
     </form></Modal>}
