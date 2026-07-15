@@ -3,6 +3,7 @@ import { Campo } from '../../Componentes/Campo'
 import { Estado,FormatoFecha,Mensaje,Modal,Titulo } from '../../Componentes/Comun'
 import { UsarSesion } from '../../Contextos/Sesion'
 import { Descargar,LeerArchivo,Solicitar } from '../../Servicios/Api'
+import { EnteroLimitado,LimiteStock } from '../../Validaciones/Reglas'
 
 export function Reabastecimientos() {
   const { usuario }=UsarSesion()
@@ -74,12 +75,12 @@ export function Reabastecimientos() {
     </table></div>
     {modal==='manual'&&<Modal titulo="Reabastecimiento manual" cerrar={()=>setModal('')}><form onSubmit={crearManual}>
       <label className="campo"><span>Producto</span><select value={manual.productoid} onChange={e=>setManual({...manual,productoid:e.target.value})}>{productos.filter(p=>p.activo).map(p=><option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}</select></label>
-      <Campo etiqueta="Cantidad requerida" type="number" min="1" value={manual.cantidadrequerida} onChange={e=>setManual({...manual,cantidadrequerida:e.target.value.replace(/\D/g,'')})} required/>
+      <Campo etiqueta="Cantidad requerida" type="number" min="1" max={LimiteStock} value={manual.cantidadrequerida} onChange={e=>setManual({...manual,cantidadrequerida:EnteroLimitado(e.target.value,LimiteStock,1)})} required/>
       <Campo etiqueta="Motivo" value={manual.observacion} onChange={e=>setManual({...manual,observacion:e.target.value.slice(0,500)})} minLength="3" required/>
       <button className="principal">Crear solicitud</button>
     </form></Modal>}
     {modal==='candidatos'&&<Modal titulo={`Candidatos para ${seleccion.producto}`} cerrar={()=>setModal('')} ancho><form onSubmit={seleccionar}>
-      {candidatos.length?<><div className="tabla"><table><thead><tr><th>Proveedor</th><th>Precio 40 %</th><th>Entrega 20 %</th><th>Pedidos 10 %</th><th>Puntaje 30 %</th><th>Resultado</th></tr></thead><tbody>{candidatos.map(c=><tr key={c.proveedorid} className={c.esmejor?'mejor':''}><td><label className="opcionradio"><input type="radio" name="proveedor" value={c.proveedorid} checked={String(c.proveedorid)===proveedorid} onChange={e=>setProveedorid(e.target.value)}/><span><b>{c.razonsocial}</b>{c.esmejor&&<small>Mejor candidato o empate</small>}</span></label></td><td>S/ {Number(c.precioevaluado).toFixed(2)}<small className="linea">Base S/ {Number(c.preciohabitual).toFixed(2)}</small></td><td>{c.diasentrega} días</td><td>{c.pedidosanteriores}</td><td>{Number(c.puntaje).toFixed(1)}/5</td><td><b>{Number(c.puntajeseleccion).toFixed(2)}</b></td></tr>)}</tbody></table></div><Campo etiqueta="Justificación de selección" value={observacion} onChange={e=>setObservacion(e.target.value.slice(0,500))} maxLength="500"/><button className="principal">Seleccionar proveedor</button></>:<p>No existen proveedores asociados a este producto.</p>}
+      {candidatos.length?<><div className="tabla"><table><thead><tr><th>Proveedor</th><th>Precio 40 %</th><th>Entrega 20 %</th><th>Pedidos 10 %</th><th>Puntaje 30 %</th><th>Resultado</th></tr></thead><tbody>{candidatos.map(c=><tr key={c.proveedorid} className={c.esmejor?'mejor':''}><td><label className="opcionradio"><input type="radio" name="proveedor" value={c.proveedorid} checked={String(c.proveedorid)===proveedorid} onChange={e=>setProveedorid(e.target.value)}/><span><b>{c.razonsocial}</b>{c.esmejor&&<small>Mejor candidato o empate</small>}</span></label></td><td>S/ {Number(c.precioevaluado).toFixed(2)}<small className="linea">Base S/ {Number(c.preciohabitual).toFixed(2)}{Number(c.descuentolanzamiento)>0&&` · Lanzamiento -${Number(c.descuentolanzamiento).toFixed(0)} %`}</small></td><td>{c.diasentrega} días</td><td>{c.pedidosanteriores}</td><td>{Number(c.puntaje).toFixed(1)}/5</td><td><b>{Number(c.puntajeseleccion).toFixed(2)}</b></td></tr>)}</tbody></table></div><Campo etiqueta="Justificación de selección" value={observacion} onChange={e=>setObservacion(e.target.value.slice(0,500))} maxLength="500"/><button className="principal">Seleccionar proveedor</button></>:<p>No existen proveedores asociados a este producto.</p>}
     </form></Modal>}
     {modal==='pago'&&<Modal titulo={`Pago de ${seleccion.ordencompra}`} cerrar={()=>setModal('')}><form onSubmit={registrarPago}>
       <label className="campo"><span>Voucher de pago</span><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={e=>setArchivo(e.target.files[0])} required/><small>Máximo 1,3 MB</small></label>

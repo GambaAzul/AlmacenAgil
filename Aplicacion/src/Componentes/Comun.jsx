@@ -24,8 +24,8 @@ export function Mensaje({error,correcto}) {
 }
 
 export function Estado({valor}) {
-  const favorables=['Normal','EnPreparacion','ListaRecojo','Entregada','Recibido','Enviado','Activo','PagoVerificado']
-  const clase=favorables.includes(valor)?'correcto':['Rechazada','PagoRechazado','Error','Agotado','Bloqueado'].includes(valor)?'peligro':'advertencia'
+  const favorables=['Normal','EnPreparacion','ListaRecojo','Entregada','Recibido','Enviado','Activo','PagoVerificado','Administrador','Código','Inicial','Activa']
+  const clase=favorables.includes(valor)?'correcto':['Rechazada','PagoRechazado','Error','Agotado','Bloqueado','Desactivado'].includes(valor)?'peligro':'advertencia'
   return <span className={`estado ${clase}`}>{String(valor).replace(/([a-z])([A-Z])/g,'$1 $2')}</span>
 }
 

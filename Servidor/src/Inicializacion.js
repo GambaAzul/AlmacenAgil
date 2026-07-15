@@ -32,19 +32,19 @@ export async function PrepararUsuariosIniciales() {
     const clave=await bcrypt.hash(process.env[variable],12)
     if (esrespaldo) {
       await BaseDatos.query(
-        `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,activo,esrespaldo,intentosfallidos,bloqueadohasta)
-         VALUES($1,$2,$3,$4,$5,$6,true,false,true,true,0,NULL)
+        `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,activo,metodoactivacion,esrespaldo,intentosfallidos,bloqueadohasta)
+         VALUES($1,$2,$3,$4,$5,$6,true,false,true,'Inicial',true,0,NULL)
          ON CONFLICT (correo) DO UPDATE SET
            clave=EXCLUDED.clave,rol='Administrador',activo=true,correoverificado=true,debecambiarclave=false,
-           esrespaldo=true,intentosfallidos=0,bloqueadohasta=NULL,versionsesion=usuarios.versionsesion+1,actualizadoen=NOW()`,
+           metodoactivacion='Inicial',esrespaldo=true,intentosfallidos=0,bloqueadohasta=NULL,versionsesion=usuarios.versionsesion+1,actualizadoen=NOW()`,
         [nombres,apellidos,dni,correo,clave,rol]
       )
       continue
     }
     await BaseDatos.query(
-      `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,esrespaldo)
-       VALUES($1,$2,$3,$4,$5,$6,true,false,false)
-       ON CONFLICT (correo) DO UPDATE SET correoverificado=true,debecambiarclave=false`,
+      `INSERT INTO usuarios(nombres,apellidos,dni,correo,clave,rol,correoverificado,debecambiarclave,metodoactivacion,esrespaldo)
+       VALUES($1,$2,$3,$4,$5,$6,true,false,'Inicial',false)
+       ON CONFLICT (correo) DO UPDATE SET correoverificado=true,debecambiarclave=false,metodoactivacion='Inicial'`,
       [nombres,apellidos,dni,correo,clave,rol]
     )
   }

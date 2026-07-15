@@ -61,7 +61,7 @@ export function Acceso() {
         <button className="principal" disabled={enviando}>{enviando?'Ingresando...':'Ingresar'}</button>
       </form>:<form onSubmit={activar}>
         <h1>Activar cuenta</h1>
-        <p>Usa el código y la clave temporal recibidos por correo.</p>
+        <p>Usa el código y la clave temporal enviados por correo o entregados por un administrador.</p>
         <Campo etiqueta="Correo" type="email" value={activacion.correo} onChange={evento=>setActivacion({...activacion,correo:evento.target.value.slice(0,160)})} required/>
         <Campo etiqueta="Código de 6 dígitos" inputMode="numeric" pattern="[0-9]{6}" value={activacion.codigo} onChange={evento=>setActivacion({...activacion,codigo:evento.target.value.replace(/\D/g,'').slice(0,6)})} required/>
         <Campo etiqueta="Contraseña temporal" type="password" value={activacion.clavetemporal} onChange={evento=>setActivacion({...activacion,clavetemporal:evento.target.value.slice(0,128)})} required/>

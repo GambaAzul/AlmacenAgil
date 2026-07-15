@@ -2,9 +2,10 @@ import { useEffect,useState } from 'react'
 import { Campo } from '../../Componentes/Campo'
 import { Estado,Mensaje,Modal,Titulo } from '../../Componentes/Comun'
 import { Solicitar } from '../../Servicios/Api'
+import { DecimalLimitado,EnteroLimitado,NombrePersona } from '../../Validaciones/Reglas'
 
 const Vacio={razonsocial:'',ruc:'',contacto:'',telefono:'',correo:'',ubicacion:''}
-const VinculoVacio={productoid:'',preciohabitual:'',diasentrega:'1',pedidosanteriores:'0',puntaje:'5'}
+const VinculoVacio={productoid:'',preciohabitual:'',descuentolanzamiento:'0',diasentrega:'1',pedidosanteriores:'0',puntaje:'5'}
 
 export function Proveedores() {
   const [proveedores,setProveedores]=useState([])
@@ -54,18 +55,18 @@ export function Proveedores() {
   }
 
   return <div className="pagina">
-    <Titulo titulo="Proveedores" descripcion="Datos comerciales y productos que vende cada proveedor" accion={<button className="principal" onClick={nuevo}>Nuevo proveedor</button>}/>
+    <Titulo titulo="Proveedores" descripcion="Datos comerciales, descuentos de lanzamiento y productos ofrecidos" accion={<button className="principal" onClick={nuevo}>Nuevo proveedor</button>}/>
     <Mensaje error={error} correcto={correcto}/>
     <div className="tarjetas">{proveedores.map(proveedor=><article className="tarjetaproveedor" key={proveedor.id}>
       <div className="cabeceratarjeta"><div><h3>{proveedor.razonsocial}</h3><small>RUC {proveedor.ruc}</small></div><Estado valor={proveedor.activo?'Activo':'Bloqueado'}/></div>
       <p><b>Contacto:</b> {proveedor.contacto}</p><p>{proveedor.telefono} · {proveedor.correo}</p><p>{proveedor.ubicacion}</p>
-      <h4>Productos</h4>{proveedor.productos.filter(p=>p.activo).length?<div className="listacompacta">{proveedor.productos.filter(p=>p.activo).map(p=><div key={p.id}><span><b>{p.codigo}</b> {p.producto}</span><span>S/ {Number(p.preciohabitual).toFixed(2)} · {p.diasentrega} días · {Number(p.puntaje).toFixed(1)}/5 <button className="enlacepeligro" onClick={()=>quitar(proveedor,p.id)}>Quitar</button></span></div>)}</div>:<p className="vacio">Sin productos asociados</p>}
+      <h4>Productos</h4>{proveedor.productos.filter(p=>p.activo).length?<div className="listacompacta">{proveedor.productos.filter(p=>p.activo).map(p=><div key={p.id}><span><b>{p.codigo}</b> {p.producto}</span><span>Lista S/ {Number(p.preciohabitual).toFixed(2)} · Efectivo S/ {Number(p.precioefectivo).toFixed(2)}{Number(p.descuentolanzamiento)>0&&` · Lanzamiento -${Number(p.descuentolanzamiento).toFixed(0)} %`} · {p.diasentrega} días · {Number(p.puntaje).toFixed(1)}/5 <button className="enlacepeligro" onClick={()=>quitar(proveedor,p.id)}>Quitar</button></span></div>)}</div>:<p className="vacio">Sin productos asociados</p>}
       <div className="accionesfila"><button className="secundario" onClick={()=>editar(proveedor)}>Editar</button><button className="secundario" onClick={()=>abrirVinculo(proveedor)}>Agregar producto</button><button className="secundario peligrotexto" onClick={()=>estado(proveedor)}>{proveedor.activo?'Bloquear':'Activar'}</button></div>
     </article>)}</div>
     {modal==='proveedor'&&<Modal titulo={seleccion?'Editar proveedor':'Nuevo proveedor'} cerrar={()=>setModal('')}><form onSubmit={guardar}>
       <Campo etiqueta="Razón social" value={formulario.razonsocial} onChange={e=>setFormulario({...formulario,razonsocial:e.target.value.slice(0,160)})} required/>
       <Campo etiqueta="RUC" inputMode="numeric" pattern="[0-9]{11}" value={formulario.ruc} onChange={e=>setFormulario({...formulario,ruc:e.target.value.replace(/\D/g,'').slice(0,11)})} required/>
-      <Campo etiqueta="Contacto" value={formulario.contacto} onChange={e=>setFormulario({...formulario,contacto:e.target.value.slice(0,120)})} required/>
+      <Campo etiqueta="Contacto" value={formulario.contacto} onChange={e=>setFormulario({...formulario,contacto:NombrePersona(e.target.value,120)})} required/>
       <Campo etiqueta="Teléfono" inputMode="tel" value={formulario.telefono} onChange={e=>setFormulario({...formulario,telefono:e.target.value.replace(/[^+0-9]/g,'').slice(0,15)})} required/>
       <Campo etiqueta="Correo" type="email" value={formulario.correo} onChange={e=>setFormulario({...formulario,correo:e.target.value.slice(0,160)})} required/>
       <Campo etiqueta="Ubicación" value={formulario.ubicacion} onChange={e=>setFormulario({...formulario,ubicacion:e.target.value.slice(0,220)})} required/>
@@ -73,10 +74,12 @@ export function Proveedores() {
     </form></Modal>}
     {modal==='vinculo'&&<Modal titulo={`Producto de ${seleccion.razonsocial}`} cerrar={()=>setModal('')}><form onSubmit={guardarVinculo}>
       <label className="campo"><span>Producto</span><select value={vinculo.productoid} onChange={e=>setVinculo({...vinculo,productoid:e.target.value})}>{productos.filter(p=>p.activo).map(p=><option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}</select></label>
-      <Campo etiqueta="Precio habitual" type="number" min="0" step="0.01" value={vinculo.preciohabitual} onChange={e=>setVinculo({...vinculo,preciohabitual:e.target.value})} required/>
-      <Campo etiqueta="Días de entrega" type="number" min="1" max="365" value={vinculo.diasentrega} onChange={e=>setVinculo({...vinculo,diasentrega:e.target.value.replace(/\D/g,'')})} required/>
-      <Campo etiqueta="Pedidos anteriores" type="number" min="0" value={vinculo.pedidosanteriores} onChange={e=>setVinculo({...vinculo,pedidosanteriores:e.target.value.replace(/\D/g,'')})} required/>
-      <Campo etiqueta="Puntaje interno" type="number" min="1" max="5" step="0.1" value={vinculo.puntaje} onChange={e=>setVinculo({...vinculo,puntaje:e.target.value})} required/>
+      <Campo etiqueta="Precio habitual" type="number" min="0" step="0.01" max="1000000" value={vinculo.preciohabitual} onChange={e=>setVinculo({...vinculo,preciohabitual:DecimalLimitado(e.target.value,1000000,2)})} required/>
+      <Campo etiqueta="Descuento de lanzamiento %" type="number" min="0" max="100" step="0.01" value={vinculo.descuentolanzamiento} onChange={e=>setVinculo({...vinculo,descuentolanzamiento:DecimalLimitado(e.target.value,100,2)})} required/>
+      <small className="ayuda">El ranking evalúa el precio efectivo después de este descuento.</small>
+      <Campo etiqueta="Días de entrega" type="number" min="1" max="365" value={vinculo.diasentrega} onChange={e=>setVinculo({...vinculo,diasentrega:EnteroLimitado(e.target.value,365,1)})} required/>
+      <Campo etiqueta="Pedidos anteriores" type="number" min="0" max="100000" value={vinculo.pedidosanteriores} onChange={e=>setVinculo({...vinculo,pedidosanteriores:EnteroLimitado(e.target.value,100000)})} required/>
+      <Campo etiqueta="Puntaje interno" type="number" min="1" max="5" step="0.1" value={vinculo.puntaje} onChange={e=>setVinculo({...vinculo,puntaje:DecimalLimitado(e.target.value,5,1)})} required/>
       <button className="principal">Vincular producto</button>
     </form></Modal>}
   </div>
