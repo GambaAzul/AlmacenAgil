@@ -3,7 +3,7 @@ import { Search,ShoppingCart,X } from 'lucide-react'
 import { Solicitar } from '../Servicios/Api'
 import { Campo } from '../Componentes/Campo'
 import { CalcularLinea } from '../Servicios/Descuentos'
-import { CorreoValido,EnteroLimitado,LimiteStock } from '../Validaciones/Reglas'
+import { CorreoCotizacionValido,EnteroLimitado,LimiteStock,TelefonoCelularValido } from '../Validaciones/Reglas'
 
 const FiltrosVacios={tipoproducto:'',material:'',grosor:'',dimensiones:''}
 
@@ -192,8 +192,8 @@ function Cotizador({carrito,setCarrito,cerrar,finalizado}) {
     if (!carrito.length) return setError('Agregue al menos un producto')
     if (carrito.some(item=>item.cantidad>item.maximo)) return setError('Una cantidad supera el máximo permitido')
     if (rucValidado!==datos.ruc||!empresa) return setError('Verifique el RUC antes de continuar')
-    if (!/^\d{7,15}$/.test(datos.telefono)) return setError('Teléfono inválido')
-    if (!CorreoValido(datos.correo)) return setError('Correo inválido')
+    if (!TelefonoCelularValido(datos.telefono)) return setError('El teléfono debe tener 9 dígitos y comenzar con 9')
+    if (!CorreoCotizacionValido(datos.correo)) return setError('Correo inválido: 6 a 30 caracteres antes de la @ y hasta 15 después, solo letras, números y puntos')
     try {
       setEnviando(true)
       const cuerpo = {
@@ -239,8 +239,8 @@ function Cotizador({carrito,setCarrito,cerrar,finalizado}) {
         <button type="button" className="secundario" onClick={verificarRuc} disabled={datos.ruc.length!==11||verificando}>{verificando?'Verificando...':'Verificar'}</button>
       </div>
       <Campo etiqueta="Empresa" value={empresa} readOnly placeholder="Se completa al verificar el RUC" required/>
-      <Campo etiqueta="Teléfono" inputMode="numeric" pattern="[0-9]{7,15}" value={datos.telefono} onChange={evento=>setDatos({...datos,telefono:evento.target.value.replace(/\D/g,'').slice(0,15)})} required/>
-      <Campo etiqueta="Correo" type="email" value={datos.correo} onChange={evento=>setDatos({...datos,correo:evento.target.value.slice(0,160)})} maxLength="160" required/>
+      <Campo etiqueta="Teléfono" inputMode="numeric" pattern="9[0-9]{8}" value={datos.telefono} onChange={evento=>setDatos({...datos,telefono:evento.target.value.replace(/\D/g,'').slice(0,9)})} minLength="9" maxLength="9" required/>
+      <Campo etiqueta="Correo" type="text" value={datos.correo} onChange={evento=>setDatos({...datos,correo:evento.target.value.replace(/[^A-Za-z0-9.@]/g,'').slice(0,46)})} maxLength="46" required/>
       {error&&<div className="mensajeerror">{error}</div>}
       <button className="principal" disabled={!carrito.length||enviando||rucValidado!==datos.ruc||!empresa}>{enviando?'Enviando...':'Enviar cotización'}</button>
     </form>

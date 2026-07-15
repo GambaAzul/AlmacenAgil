@@ -6,6 +6,15 @@ const Correo = z.string().trim().email().max(160).transform(valor=>valor.toLower
 const Dni = z.string().regex(/^\d{8}$/)
 const Ruc = z.string().regex(/^\d{11}$/)
 const Telefono = z.string().regex(/^\+?\d{7,15}$/)
+const TelefonoCelular = z.string().regex(/^9\d{8}$/)
+const CorreoCotizacion = z.string().max(46)
+  .refine(valor=>{
+    const partes=valor.split('@')
+    if (partes.length!==2) return false
+    const [local,dominio]=partes
+    return /^[A-Za-z0-9.]{6,30}$/.test(local)&&/^[A-Za-z0-9]+(\.[A-Za-z0-9]+)+$/.test(dominio)&&dominio.length<=15
+  },{message:'Correo inválido'})
+  .transform(valor=>valor.toLowerCase())
 const Entero = z.coerce.number().finite().int().min(0).max(1000000)
 const Stock = z.coerce.number().finite().int().min(0).max(LimiteStock)
 const CantidadStock = z.coerce.number().finite().int().min(1).max(LimiteStock)
@@ -83,8 +92,8 @@ export const EsquemaUsuario = z.object({
 export const EsquemaCotizacion = z.object({
   cliente:Texto(3,160),
   ruc:Ruc,
-  telefono:Telefono,
-  correo:Correo,
+  telefono:TelefonoCelular,
+  correo:CorreoCotizacion,
   productos:z.array(z.object({
     productoid:z.coerce.number().int().positive().max(1000000),
     cantidad:CantidadStock

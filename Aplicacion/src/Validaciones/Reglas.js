@@ -5,6 +5,15 @@ export const Limitar=(v,n)=>String(v??'').slice(0,n)
 export const CorreoValido=v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v??'').trim())
 export const ClaveValida=v=>v.length>=12&&/[A-Z]/.test(v)&&/[a-z]/.test(v)&&/\d/.test(v)&&/[^A-Za-z0-9]/.test(v)
 
+export const TelefonoCelularValido=v=>/^9\d{8}$/.test(String(v??''))
+export function CorreoCotizacionValido(v) {
+  const valor=String(v??'')
+  const partes=valor.split('@')
+  if (partes.length!==2) return false
+  const [local,dominio]=partes
+  return /^[A-Za-z0-9.]{6,30}$/.test(local)&&/^[A-Za-z0-9]+(\.[A-Za-z0-9]+)+$/.test(dominio)&&dominio.length<=15
+}
+
 export function EnteroLimitado(valor,maximo=LimiteStock,minimo=0) {
   const limpio=SoloNumeros(valor).slice(0,String(maximo).length+1)
   if (!limpio) return ''
