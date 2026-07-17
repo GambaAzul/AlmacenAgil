@@ -44,6 +44,14 @@ export const LimiteConsultaRuc = rateLimit({
   message:{mensaje:'Límite de consultas de RUC alcanzado'}
 })
 
+export const LimiteConsultaDni = rateLimit({
+  windowMs:10*60_000,
+  limit:15,
+  standardHeaders:true,
+  legacyHeaders:false,
+  message:{mensaje:'Límite de consultas de DNI alcanzado'}
+})
+
 export async function Autenticar(req,res,siguiente) {
   const token=req.cookies?.SesionSegura
   if (!token) return res.status(401).json({mensaje:'Sesión requerida'})

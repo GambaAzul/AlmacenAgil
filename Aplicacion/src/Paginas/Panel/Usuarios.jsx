@@ -2,9 +2,9 @@ import { useEffect,useState } from 'react'
 import { Campo } from '../../Componentes/Campo'
 import { Estado,FormatoFecha,Mensaje,Modal,Titulo } from '../../Componentes/Comun'
 import { Solicitar } from '../../Servicios/Api'
-import { CorreoValido,NombrePersona } from '../../Validaciones/Reglas'
 
-const Vacio={nombres:'',apellidos:'',dni:'',correo:'',rol:'AsesorVentas'}
+const Vacio={dni:'',rol:'AsesorVentas'}
+const DatosDniVacio={dni:'',nombres:'',apellidos:'',correo:''}
 const Roles=['Administrador','AsesorVentas','JefeAlmacen']
 
 const Bloqueado=usuario=>Boolean(usuario.bloqueadohasta&&new Date(usuario.bloqueadohasta)>new Date())
@@ -28,6 +28,9 @@ function VerificacionCuenta(usuario) {
 export function Usuarios() {
   const [usuarios,setUsuarios]=useState([])
   const [formulario,setFormulario]=useState(Vacio)
+  const [datosDni,setDatosDni]=useState(DatosDniVacio)
+  const [verificandoDni,setVerificandoDni]=useState(false)
+  const [errorDni,setErrorDni]=useState('')
   const [modal,setModal]=useState(false)
   const [credenciales,setCredenciales]=useState(null)
   const [error,setError]=useState('')
@@ -42,22 +45,35 @@ export function Usuarios() {
       ? 'El correo falló. Entregue las credenciales mostradas al trabajador.'
       : 'El correo no está configurado. Entregue las credenciales mostradas al trabajador.'
 
-  const validarFormulario=()=>{
-    if (formulario.nombres.trim().length<2||formulario.apellidos.trim().length<2) return 'Revise nombres y apellidos'
-    if (!/^\d{8}$/.test(formulario.dni)) return 'El DNI debe tener 8 dígitos'
-    if (!CorreoValido(formulario.correo)) return 'Ingrese un correo válido'
-    if (!Roles.includes(formulario.rol)) return 'Seleccione un rol válido'
-    return ''
+  const cambiarDni=valor=>{
+    setFormulario({...formulario,dni:valor})
+    setDatosDni(DatosDniVacio)
+    setErrorDni('')
+  }
+
+  const verificarDni=async()=>{
+    setErrorDni('')
+    if (!/^\d{8}$/.test(formulario.dni)) return setErrorDni('El DNI debe tener 8 dígitos')
+    try {
+      setVerificandoDni(true)
+      const respuesta=await Solicitar(`/usuarios/dni/${formulario.dni}`)
+      setDatosDni({dni:formulario.dni,nombres:respuesta.nombres,apellidos:respuesta.apellidos,correo:respuesta.correo})
+    } catch (fallo) {
+      setDatosDni(DatosDniVacio)
+      setErrorDni(fallo.message)
+    } finally {
+      setVerificandoDni(false)
+    }
   }
 
   const guardar=async evento=>{
     evento.preventDefault();setError('');setCorrecto('');setCredenciales(null)
-    const validacion=validarFormulario()
-    if (validacion) return setError(validacion)
+    if (datosDni.dni!==formulario.dni||!datosDni.correo) return setError('Verifique el DNI antes de continuar')
+    if (!Roles.includes(formulario.rol)) return setError('Seleccione un rol válido')
     try {
-      const datos={...formulario,nombres:formulario.nombres.trim(),apellidos:formulario.apellidos.trim(),correo:formulario.correo.trim().toLowerCase()}
+      const datos={nombres:datosDni.nombres,apellidos:datosDni.apellidos,dni:formulario.dni,correo:datosDni.correo,rol:formulario.rol}
       const respuesta=await Solicitar('/usuarios',{method:'POST',body:JSON.stringify(datos)})
-      setModal(false);setFormulario(Vacio);setCorrecto(`Trabajador creado. ${mensajeCorreo(respuesta.correoestado)}`);setCredenciales(respuesta.credenciales||null);await cargar()
+      setModal(false);setFormulario(Vacio);setDatosDni(DatosDniVacio);setCorrecto(`Trabajador creado. ${mensajeCorreo(respuesta.correoestado)}`);setCredenciales(respuesta.credenciales||null);await cargar()
     } catch (fallo) { setError(fallo.message) }
   }
 
@@ -140,7 +156,7 @@ export function Usuarios() {
   }
 
   return <div className="pagina">
-    <Titulo titulo="Trabajadores" descripcion="Creación, activación manual, roles y control de acceso" accion={<button className="principal" onClick={()=>{setModal(true);setError('');setCorrecto('')}}>Nuevo trabajador</button>}/>
+    <Titulo titulo="Trabajadores" descripcion="Creación, activación manual, roles y control de acceso" accion={<button className="principal" onClick={()=>{setModal(true);setFormulario(Vacio);setDatosDni(DatosDniVacio);setErrorDni('');setError('');setCorrecto('')}}>Nuevo trabajador</button>}/>
     <Mensaje error={error} correcto={correcto}/>
     <div className="tabla"><table>
       <thead><tr><th>Trabajador</th><th>DNI</th><th>Correo</th><th>Rol</th><th>Verificación</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
@@ -152,12 +168,17 @@ export function Usuarios() {
       </tr>)}</tbody>
     </table></div>
     {modal&&<Modal titulo="Nuevo trabajador" cerrar={()=>setModal(false)}><form onSubmit={guardar} noValidate>
-      <Campo etiqueta="DNI" inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={formulario.dni} onChange={e=>setFormulario({...formulario,dni:e.target.value.replace(/\D/g,'').slice(0,8)})} required/>
-      <Campo etiqueta="Apellidos" value={formulario.apellidos} onChange={e=>setFormulario({...formulario,apellidos:NombrePersona(e.target.value,80)})} minLength="2" maxLength="80" required/>
-      <Campo etiqueta="Nombres" value={formulario.nombres} onChange={e=>setFormulario({...formulario,nombres:NombrePersona(e.target.value,80)})} minLength="2" maxLength="80" required/>
+      <div className="filaruc">
+        <Campo etiqueta="DNI" inputMode="numeric" pattern="[0-9]{8}" maxLength="8" value={formulario.dni} onChange={e=>cambiarDni(e.target.value.replace(/\D/g,'').slice(0,8))} minLength="8" maxLength="8" required/>
+        <button type="button" className="secundario" onClick={verificarDni} disabled={formulario.dni.length!==8||verificandoDni}>{verificandoDni?'Verificando...':'Verificar'}</button>
+      </div>
+      {errorDni&&<div className="mensajeerror">{errorDni}</div>}
+      <Campo etiqueta="Apellidos" value={datosDni.apellidos} readOnly placeholder="Se completa al verificar el DNI" required/>
+      <Campo etiqueta="Nombres" value={datosDni.nombres} readOnly placeholder="Se completa al verificar el DNI" required/>
       <label className="campo"><span>Rol</span><select value={formulario.rol} onChange={e=>setFormulario({...formulario,rol:e.target.value})} required><option value="AsesorVentas">Asesor de ventas</option><option value="JefeAlmacen">Jefe de almacén</option><option value="Administrador">Administrador</option></select></label>
-      <Campo etiqueta="Correo" type="email" maxLength="160" value={formulario.correo} onChange={e=>setFormulario({...formulario,correo:e.target.value.replace(/\s/g,'').slice(0,160)})} required/>
-      <button className="principal">Crear trabajador</button>
+      <Campo etiqueta="Correo" value={datosDni.correo} readOnly placeholder="Se genera al verificar el DNI" required/>
+      {error&&<div className="mensajeerror">{error}</div>}
+      <button className="principal" disabled={datosDni.dni!==formulario.dni||!datosDni.correo}>Crear trabajador</button>
     </form></Modal>}
     {credenciales&&<Modal titulo={credenciales.ingresotemporal?'Acceso temporal':'Credenciales de activación'} cerrar={()=>setCredenciales(null)}><div className="credencialesmodal">
       <p>{credenciales.ingresotemporal?'El trabajador debe ingresar con esta clave temporal y cambiarla obligatoriamente antes de usar el sistema.':'Entregue estos datos una sola vez. El trabajador deberá activar la cuenta y establecer su contraseña definitiva.'}</p>

@@ -10,6 +10,7 @@ import {
   ExigirProteccion,
   LimiteAcceso,
   LimiteActivacion,
+  LimiteConsultaDni,
   LimiteConsultaRuc,
   LimiteCotizacion,
   Validar,
@@ -43,6 +44,7 @@ import { CalcularDescuentoTotal,CalcularSubtotal } from '../Servicios/Descuentos
 import { EnviarCorreo } from '../Servicios/Correo.js'
 import { FacturaPublica,CrearFactura,GenerarPdfFactura,ObtenerFactura } from '../Servicios/Facturas.js'
 import { ConsultarRuc,RucEsValido } from '../Servicios/Sunat.js'
+import { ConsultarDni,EsMayorDeEdad,CapitalizarTexto,PrefijoCorreo } from '../Servicios/Reniec.js'
 import {
   CompletarReservasPendientes,
   CrearReabastecimiento,
@@ -559,6 +561,27 @@ Api.get('/usuarios',Administrador,async (_,res)=>{
      FROM usuarios ORDER BY id DESC`
   )
   res.json(datos.rows)
+})
+
+Api.get('/usuarios/dni/:dni',Administrador,LimiteConsultaDni,async (req,res)=>{
+  const dni=String(req.params.dni||'')
+  if (!/^\d{8}$/.test(dni)) return res.status(400).json({mensaje:'DNI inválido'})
+  try {
+    const resultado=await ConsultarDni(dni)
+    if (!resultado) return res.status(404).json({mensaje:'DNI erróneo'})
+    if (!EsMayorDeEdad(resultado.fechanacimiento)) return res.status(403).json({mensaje:'DNI no permitido por restricción de edad'})
+    const basecorreo=PrefijoCorreo(resultado.nombres,resultado.apellidos)
+    let correo=null
+    for (let longitud=1;longitud<=dni.length;longitud++) {
+      const candidato=`${basecorreo}${dni.slice(-longitud)}@elima.pe`
+      const existe=(await BaseDatos.query('SELECT 1 FROM usuarios WHERE correo=$1',[candidato])).rows.length
+      if (!existe) { correo=candidato; break }
+    }
+    if (!correo) return res.status(409).json({mensaje:'Ya existe un trabajador registrado con estos datos'})
+    res.json({nombres:CapitalizarTexto(resultado.nombres),apellidos:CapitalizarTexto(resultado.apellidos),correo})
+  } catch {
+    res.status(502).json({mensaje:'No se pudo validar el DNI, intente nuevamente'})
+  }
 })
 
 Api.post('/usuarios',Administrador,Validar(EsquemaUsuario),async (req,res)=>{

@@ -41,6 +41,7 @@ CLAVEADMINRESPALDO
 CLAVEVENTAS
 CLAVEALMACEN
 TOKENSUNAT (token de la API de consulta de RUC)
+TOKENDNI (token de la API de consulta de DNI)
 
 
 La cuenta de recuperación es:
@@ -72,6 +73,7 @@ git status
    - “CLAVEVENTAS”.
    - “CLAVEALMACEN”.
    - “TOKENSUNAT”.
+   - “TOKENDNI”.
 5. Confirma el plan gratuito y crea el Blueprint.
 
 “SECRETOACCESO” se genera automáticamente.

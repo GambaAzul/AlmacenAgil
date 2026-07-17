@@ -24,6 +24,7 @@ CLAVEADMINRESPALDO=${claveadminrespaldo}
 CLAVEVENTAS=${claveventas}
 CLAVEALMACEN=${clavealmacen}
 TOKENSUNAT=
+TOKENDNI=
 SERVIDORCORREO=
 PUERTOCORREO=587
 CORREOSEGURIDAD=false
@@ -43,4 +44,4 @@ echo "Asesor: ventas@almacenagil.pe"
 echo "Clave: ${claveventas}"
 echo "Almacén: almacen@almacenagil.pe"
 echo "Clave: ${clavealmacen}"
-echo "Pendiente: edita .env y agrega tu TOKENSUNAT (token de la API de consulta de RUC) antes de iniciar"
+echo "Pendiente: edita .env y agrega tu TOKENSUNAT (token de la API de consulta de RUC) y TOKENDNI (token de la API de consulta de DNI) antes de iniciar"
